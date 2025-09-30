@@ -1,85 +1,82 @@
-# Refund Policy
+# Política de Reembolso
 
-Last Updated: December 14, 2024
+Última Actualización: 14 de diciembre de 2024
 
-## 1. Company Information
+## 1. Información de la Compañía
 
-Company Name:
+Nombre de la Compañía: PixelPages
 
-Tax number: 1234567890
+Número de Identificación Fiscal (NIF/CIF): 1234567890
 
-## 2. General Policy
+## 2. Política General
 
-We strive to ensure customer satisfaction with all our digital services and products. This policy outlines our procedures for refunds and cancellations.
+En PixelPages, nos esforzamos por garantizar la satisfacción del cliente con todos nuestros servicios digitales y productos. Esta política describe nuestros procedimientos para reembolsos y cancelaciones.
 
-## 3. Subscription Services
+## 3. Servicios de Suscripción (Generador de Video)
 
-### 3.1 Cancellation
-- You may cancel your subscription at any time
-- Access continues until the end of the billing period
-- No partial refunds for unused time
+### 3.1 Cancelación
+- Puede cancelar su suscripción en cualquier momento.
+- El acceso a la herramienta de generación de videos continúa hasta el final del período de facturación.
+- No se emitirán reembolsos parciales por el tiempo no utilizado del ciclo de facturación.
 
-### 3.2 Automatic Renewals
-- Subscriptions renew automatically
-- Cancel at least 24 hours before renewal
-- No refunds for automatic renewals
+### 3.2 Renovaciones Automáticas
+- Las suscripciones se renuevan automáticamente.
+- Debe cancelar su suscripción al menos 24 horas antes de la fecha de renovación.
+- No se ofrecen reembolsos por renovaciones automáticas ya procesadas.
 
-## 4. Data Products
+## 4. Productos Digitales (Créditos o Paquetes)
 
-### 4.1 Digital Products
-- Data products are non-refundable once delivered
-- Sample data available before purchase
-- Technical support provided for access issues
+### 4.1 Paquetes de Créditos
+- Los paquetes de créditos o productos digitales consumibles para la generación de videos no son reembolsables una vez que han sido entregados y acreditados a su cuenta.
+- Se proporciona soporte técnico para problemas de acceso o funcionalidad.
 
-### 4.2 Custom Data Solutions
-- Custom orders are non-refundable
-- Requirements confirmed before processing
-- Revision period available
+### 4.2 Soluciones Personalizadas
+- Los pedidos de soluciones o integraciones personalizadas no son reembolsables.
+- Los requisitos y alcances se confirman por escrito antes de iniciar el procesamiento.
+- Se establece un período de revisión para garantizar la satisfacción con la entrega final.
 
-## 5. Refund Eligibility
+## 5. Elegibilidad para el Reembolso
 
-Refunds may be considered for:
-- Technical issues preventing access
-- Service unavailability
-- Incorrect charges
-- Legal requirements
+Se pueden considerar reembolsos por las siguientes razones:
+- Problemas técnicos que impidan completamente el uso del servicio de generación de video.
+- Indisponibilidad prolongada del servicio (tiempo de inactividad no planificado).
+- Cargos incorrectos o duplicados.
+- Requerimientos legales aplicables.
 
-## 6. Refund Process
+## 6. Proceso de Reembolso
 
-To request a refund:
-1. Contact support within 14 days
-2. Provide order details
-3. Explain refund reason
-4. Allow 5-10 business days for processing
+Para solicitar un reembolso:
+1. Contacte a nuestro soporte técnico dentro de los 14 días posteriores a la compra.
+2. Proporcione los detalles del pedido o la transacción.
+3. Explique claramente la razón de la solicitud de reembolso.
+4. Permita de 5 a 10 días hábiles para el procesamiento y revisión de la solicitud.
 
-## 7. Payment Processing
+## 7. Procesamiento de Pagos
 
-### 7.1 Refund Method
-- Refunds processed through original payment method
-- Processed via Paddle
-- Currency same as original payment
+### 7.1 Método de Reembolso
+- Los reembolsos se procesan a través del método de pago original.
+- El proceso se gestiona a través de nuestro procesador de pagos (Paddle).
+- La moneda del reembolso será la misma que la del pago original.
 
-### 7.2 Processing Time
-- 2-5 business days for approval
-- 5-10 business days for bank processing
-- May vary by payment method
+### 7.2 Tiempo de Procesamiento
+- 2-5 días hábiles para la aprobación interna del reembolso.
+- 5-10 días hábiles adicionales para que el banco procese la devolución (puede variar según la entidad bancaria o el método de pago).
 
-## 8. Exceptions
+## 8. Excepciones
 
-No refunds for:
-- Used or accessed digital products
-- Expired subscriptions
-- Violations of Terms of Service
-- Fraudulent activities
+No se realizarán reembolsos por:
+- Productos digitales (créditos) ya utilizados o consumidos.
+- Suscripciones que hayan expirado o que se hayan cancelado después de la fecha límite de renovación.
+- Violaciones de nuestros Términos de Servicio.
+- Actividades fraudulentas o abusivas.
 
-## 9. Customer Support
+## 9. Soporte al Cliente
 
-For refund requests contact:
-Email: contact@komiru.com
+Para solicitudes de reembolso o preguntas relacionadas:
+Correo Electrónico: contact@pixelpages.com
 
-## 10. Changes to Policy
+## 10. Cambios a la Política
 
-- We reserve the right to modify this policy
-- Changes effective upon posting
-- Current customers notified of material changes
-
+- Nos reservamos el derecho de modificar esta política en cualquier momento.
+- Los cambios entrarán en vigor tan pronto como sean publicados.
+- Se notificará a los clientes actuales sobre los cambios sustanciales a través de correo electrónico.

@@ -260,6 +260,48 @@
     --color-accent-900: #78350f;
 }
 
+.theme-pixel {
+    --color-primary-50: oklch(97.9% 0.021 166.113);
+    --color-primary-100: oklch(95% 0.052 163.051);
+    --color-primary-200: oklch(90.5% 0.093 164.15);
+    --color-primary-300: oklch(84.5% 0.143 164.978);
+    --color-primary-400: oklch(76.5% 0.177 163.223);
+    --color-primary-500: oklch(69.6% 0.17 162.48);
+    --color-primary-600: oklch(59.6% 0.145 163.225);
+    --color-primary-700: oklch(50.8% 0.118 165.612);
+    --color-primary-800: oklch(43.2% 0.095 166.913);
+    --color-primary-900: oklch(37.8% 0.077 168.94);
+    --color-primary-950: oklch(26.2% 0.051 172.552);
+
+    --color-secondary-50: oklch(97.1% 0.014 343.198);
+    --color-secondary-100: oklch(94.8% 0.028 342.258);
+    --color-secondary-200: oklch(89.9% 0.061 343.231);
+    --color-secondary-300: oklch(82.3% 0.12 346.018);
+    --color-secondary-400: oklch(65.6% 0.241 354.308);
+    --color-secondary-500: oklch(59.2% 0.249 0.584);
+    --color-secondary-600: oklch(59.2% 0.249 0.584);
+    --color-secondary-700: oklch(52.5% 0.223 3.958);
+    --color-secondary-800: oklch(45.9% 0.187 3.815);
+    --color-secondary-900: oklch(40.8% 0.153 2.432);
+    --color-secondary-950: oklch(28.4% 0.109 3.907);
+
+    --color-base-50: oklch(98.5% 0.001 106.423);
+    --color-base-100: oklch(97% 0.001 106.424);
+    --color-base-200: oklch(37% 0.013 285.805);
+    --color-base-300: oklch(27.4% 0.006 286.033);
+    --color-base-400: oklch(21% 0.006 285.885);
+
+    --color-accent-50: #fffbeb;
+    --color-accent-100: #fef3c7;
+    --color-accent-200: #fde68a;
+    --color-accent-300: #fcd34d;
+    --color-accent-400: #fbbf24;
+    --color-accent-500: #f59e0b;
+    --color-accent-600: #d97706;
+    --color-accent-700: #b45309;
+    --color-accent-800: #92400e;
+    --color-accent-900: #78350f;
+}
 
 @layer components {
     .btn-primary {

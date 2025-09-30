@@ -1,102 +1,113 @@
-# Terms of Service
+# Términos de Servicio
 
-Last Updated: December 14, 2024
+Última actualización: 14 de diciembre de 2024
 
-## 1. Company Information
+## 1. Información de la Empresa
 
-Company Name:
+Nombre de la empresa:  
 
-Tax number: 1234567890
+Número fiscal: 1234567890  
 
-## 2. Introduction
+## 2. Introducción
 
-Welcome to SupaSasS ("we," "our," or "us"). These Terms of Service ("Terms") govern your access to and use of our website, applications, and services (collectively, the "Services"), including AI-powered tools, data analysis features, and subscription services.
+Bienvenido a SupaSasS ("nosotros", "nuestro" o "nos"). Estos Términos de Servicio ("Términos") regulan tu acceso y uso de nuestro sitio web, aplicaciones y servicios (colectivamente, los "Servicios"), incluyendo herramientas con inteligencia artificial, funciones de análisis de datos y servicios de suscripción.
 
-## 3. Acceptance of Terms
+## 3. Aceptación de los Términos
 
-By accessing or using our Services, you agree to be bound by these Terms. If you disagree with any part of these terms, you may not access the Services.
+Al acceder o utilizar nuestros Servicios, aceptas estar sujeto a estos Términos. Si no estás de acuerdo con alguna parte de los mismos, no podrás acceder a los Servicios.
 
-## 4. Services Description
+## 4. Descripción de los Servicios
 
-Our Services include:
-- AI-powered domain search tools
-- Shopify store analysis
-- Data marketplace access
-- Customer analytics tools
-- Multi-language support features
+Nuestros Servicios incluyen:
 
-## 5. Account Registration and Security
+- Herramientas de búsqueda de dominios con IA  
+- Análisis de tiendas Shopify  
+- Acceso a un mercado de datos  
+- Herramientas de analítica de clientes  
+- Funciones de soporte multilingüe  
 
-### 5.1 Account Creation
-- You must register for an account to access most features
-- You must provide accurate, current, and complete information
-- You must be at least 18 years old to create an account
+## 5. Registro y Seguridad de la Cuenta
 
-### 5.2 Account Security
-- You are responsible for maintaining the confidentiality of your account credentials
-- You must notify us immediately of any unauthorized access
-- We reserve the right to disable accounts that violate our terms
+### 5.1 Creación de la Cuenta
 
-## 6. Subscription Terms
+- Debes registrarte para acceder a la mayoría de las funciones  
+- Debes proporcionar información precisa, actual y completa  
+- Debes tener al menos 18 años para crear una cuenta  
 
-### 6.1 Billing
-- Subscription fees are billed in advance through Paddle
-- Prices are listed in EUR/USD and may be subject to local taxes
-- We reserve the right to change pricing with 30 days notice
+### 5.2 Seguridad de la Cuenta
 
-### 6.2 Cancellation
-- You may cancel your subscription at any time through your account dashboard
-- Refunds are subject to our Refund Policy
-- Cancellation will take effect at the end of the current billing period
+- Eres responsable de mantener la confidencialidad de tus credenciales  
+- Debes notificarnos de inmediato cualquier acceso no autorizado  
+- Nos reservamos el derecho de desactivar cuentas que violen nuestros términos  
 
-## 7. Data Usage and Privacy
+## 6. Términos de Suscripción
 
-### 7.1 Data Collection
-- We collect and process data as described in our Privacy Policy
-- You retain ownership of your content and data
-- We use data to improve and maintain our services
+### 6.1 Facturación
 
-### 7.2 AI Analysis
-- Our AI tools analyze data you provide
-- Analysis results are for informational purposes only
-- We do not guarantee accuracy of AI-generated recommendations
+- Las tarifas de suscripción se facturan por adelantado a través de Paddle  
+- Los precios se muestran en EUR/USD y pueden estar sujetos a impuestos locales  
+- Nos reservamos el derecho de cambiar los precios con 30 días de aviso  
 
-## 8. Intellectual Property
+### 6.2 Cancelación
 
-### 8.1 Our Rights
-- All content, features, and functionality are owned by Adam Raźniewski oprogramowanie
-- Our trademarks and trade dress may not be used without written permission
+- Puedes cancelar tu suscripción en cualquier momento desde tu panel de cuenta  
+- Los reembolsos están sujetos a nuestra Política de Reembolsos  
+- La cancelación será efectiva al final del período de facturación vigente  
 
-### 8.2 Your Rights
-- You retain all rights to data you upload
-- You grant us license to use your data to provide services
+## 7. Uso de Datos y Privacidad
 
-## 9. Limitations of Liability
+### 7.1 Recolección de Datos
 
-- Services are provided "as is" without warranties
-- We are not liable for any indirect, incidental, or consequential damages
-- Our liability is limited to the amount paid for services in the past 12 months
+- Recopilamos y procesamos datos según lo descrito en nuestra Política de Privacidad  
+- Conservas la propiedad de tu contenido y datos  
+- Usamos los datos para mejorar y mantener nuestros servicios  
 
-## 10. Termination
+### 7.2 Análisis con IA
 
-We reserve the right to terminate or suspend access to our Services:
-- For violations of these Terms
-- For fraudulent or illegal activities
-- At our sole discretion with reasonable notice
+- Nuestras herramientas de IA analizan los datos que proporciones  
+- Los resultados de los análisis son solo de carácter informativo  
+- No garantizamos la exactitud de las recomendaciones generadas por IA  
 
-## 11. Changes to Terms
+## 8. Propiedad Intelectual
 
-We may modify these Terms at any time:
-- Changes will be effective upon posting
-- Continued use constitutes acceptance of changes
-- Material changes will be notified via email
+### 8.1 Nuestros Derechos
 
-## 12. Governing Law
+- Todo el contenido, funciones y funcionalidades son propiedad de Adam Raźniewski oprogramowanie  
+- Nuestras marcas registradas e identidad visual no pueden usarse sin permiso escrito  
 
-These Terms shall be governed by and construed in accordance with the laws of Poland, without regard to its conflict of law provisions.
+### 8.2 Tus Derechos
 
-## 13. Contact Information
+- Conservas todos los derechos sobre los datos que subas  
+- Nos otorgas licencia para usar tus datos con el fin de prestar los servicios  
 
-For any questions about these Terms, please contact us at:
+## 9. Limitaciones de Responsabilidad
+
+- Los servicios se proporcionan "tal cual", sin garantías  
+- No somos responsables de daños indirectos, incidentales o consecuentes  
+- Nuestra responsabilidad se limita al monto pagado por los servicios en los últimos 12 meses  
+
+## 10. Terminación
+
+Nos reservamos el derecho de suspender o dar por terminado el acceso a nuestros Servicios:
+
+- Por violaciones a estos Términos  
+- Por actividades fraudulentas o ilegales  
+- A nuestra discreción, con aviso razonable  
+
+## 11. Cambios en los Términos
+
+Podemos modificar estos Términos en cualquier momento:
+
+- Los cambios serán efectivos al publicarse  
+- El uso continuo constituye la aceptación de dichos cambios  
+- Los cambios importantes serán notificados por correo electrónico  
+
+## 12. Ley Aplicable
+
+Estos Términos se regirán e interpretarán de acuerdo con las leyes de Polonia, sin considerar sus disposiciones sobre conflictos de leyes.
+
+## 13. Información de Contacto
+
+Para cualquier pregunta sobre estos Términos, por favor contáctanos en:  
+
 Email: contact@supasass.com
-
