@@ -11,7 +11,7 @@ Número de Identificación Fiscal (NIF/CIF): 1234567890
 
 ## 2. Introducción
 
-Este Aviso de Privacidad explica cómo recopilamos, usamos, divulgamos y protegemos su información cuando utiliza los servicios de **PixelPages**, nuestro generador de imágenes a video.
+Este Aviso de Privacidad explica cómo recopilamos, usamos, divulgamos y protegemos su información cuando utiliza los servicios de PixelPages, nuestro generador de imágenes a video.
 
 ## 3. Información que Recopilamos
 

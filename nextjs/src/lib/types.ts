@@ -1,3 +1,5 @@
+// lib/types.ts
+
 export type Json =
   | string
   | number
@@ -34,36 +36,327 @@ export type Database = {
   }
   public: {
     Tables: {
-      todo_list: {
+      user_profiles: {
         Row: {
+          id: string
+          email: string
+          full_name: string | null
+          phone: string | null
+          avatar_url: string | null
+          credits_balance: number
+          total_credits_purchased: number
+          total_videos_generated: number
+          daily_generation_limit: number
+          daily_generations_used: number
+          daily_reset_date: string
           created_at: string
-          description: string | null
-          done: boolean
-          done_at: string | null
-          id: number
-          owner: string
-          title: string
-          urgent: boolean
+          updated_at: string
+          last_login_at: string | null
         }
         Insert: {
+          id: string
+          email: string
+          full_name?: string | null
+          phone?: string | null
+          avatar_url?: string | null
+          credits_balance?: number
+          total_credits_purchased?: number
+          total_videos_generated?: number
+          daily_generation_limit?: number
+          daily_generations_used?: number
+          daily_reset_date?: string
           created_at?: string
-          description?: string | null
-          done?: boolean
-          done_at?: string | null
-          id?: number
-          owner: string
-          title: string
-          urgent?: boolean
+          updated_at?: string
+          last_login_at?: string | null
         }
         Update: {
+          id?: string
+          email?: string
+          full_name?: string | null
+          phone?: string | null
+          avatar_url?: string | null
+          credits_balance?: number
+          total_credits_purchased?: number
+          total_videos_generated?: number
+          daily_generation_limit?: number
+          daily_generations_used?: number
+          daily_reset_date?: string
           created_at?: string
+          updated_at?: string
+          last_login_at?: string | null
+        }
+        Relationships: []
+      }
+      credit_packages: {
+        Row: {
+          id: string
+          name: string
+          slug: string
+          package_type: 'fixed' | 'custom'
+          credits_amount: number | null
+          price_mxn: number | null
+          min_credits: number | null
+          price_per_credit: number | null
+          description: string | null
+          features: Json | null
+          is_active: boolean
+          is_popular: boolean
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          slug: string
+          package_type: 'fixed' | 'custom'
+          credits_amount?: number | null
+          price_mxn?: number | null
+          min_credits?: number | null
+          price_per_credit?: number | null
           description?: string | null
-          done?: boolean
-          done_at?: string | null
-          id?: number
-          owner?: string
-          title?: string
-          urgent?: boolean
+          features?: Json | null
+          is_active?: boolean
+          is_popular?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          slug?: string
+          package_type?: 'fixed' | 'custom'
+          credits_amount?: number | null
+          price_mxn?: number | null
+          min_credits?: number | null
+          price_per_credit?: number | null
+          description?: string | null
+          features?: Json | null
+          is_active?: boolean
+          is_popular?: boolean
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      credit_purchases: {
+        Row: {
+          id: string
+          user_id: string
+          package_id: string | null
+          package_name: string
+          credits_amount: number
+          price_paid_mxn: number
+          payment_method: string
+          payment_id: string | null
+          preference_id: string | null
+          payment_status: string
+          notes: string | null
+          applied_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          package_id?: string | null
+          package_name: string
+          credits_amount: number
+          price_paid_mxn: number
+          payment_method?: string
+          payment_id?: string | null
+          preference_id?: string | null
+          payment_status?: string
+          notes?: string | null
+          applied_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          package_id?: string | null
+          package_name?: string
+          credits_amount?: number
+          price_paid_mxn?: number
+          payment_method?: string
+          payment_id?: string | null
+          preference_id?: string | null
+          payment_status?: string
+          notes?: string | null
+          applied_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_purchases_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      video_generations: {
+        Row: {
+          id: string
+          user_id: string
+          prompt: string
+          input_image_url: string
+          input_image_path: string | null
+          model: string
+          duration: number
+          aspect_ratio: string
+          resolution: string
+          vidu_task_id: string | null
+          vidu_creation_id: string | null
+          status: string
+          credits_used: number
+          video_url: string | null
+          cover_url: string | null
+          video_duration_actual: number | null
+          video_fps: number | null
+          bgm: boolean
+          error_message: string | null
+          error_code: string | null
+          retry_count: number
+          max_retries: number
+          vidu_full_response: Json | null
+          created_at: string
+          started_at: string | null
+          completed_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          prompt: string
+          input_image_url: string
+          input_image_path?: string | null
+          model?: string
+          duration?: number
+          aspect_ratio?: string
+          resolution?: string
+          vidu_task_id?: string | null
+          vidu_creation_id?: string | null
+          status?: string
+          credits_used?: number
+          video_url?: string | null
+          cover_url?: string | null
+          video_duration_actual?: number | null
+          video_fps?: number | null
+          bgm?: boolean
+          error_message?: string | null
+          error_code?: string | null
+          retry_count?: number
+          max_retries?: number
+          vidu_full_response?: Json | null
+          created_at?: string
+          started_at?: string | null
+          completed_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          prompt?: string
+          input_image_url?: string
+          input_image_path?: string | null
+          model?: string
+          duration?: number
+          aspect_ratio?: string
+          resolution?: string
+          vidu_task_id?: string | null
+          vidu_creation_id?: string | null
+          status?: string
+          credits_used?: number
+          video_url?: string | null
+          cover_url?: string | null
+          video_duration_actual?: number | null
+          video_fps?: number | null
+          bgm?: boolean
+          error_message?: string | null
+          error_code?: string | null
+          retry_count?: number
+          max_retries?: number
+          vidu_full_response?: Json | null
+          created_at?: string
+          started_at?: string | null
+          completed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_generations_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      credit_transactions: {
+        Row: {
+          id: string
+          user_id: string
+          amount: number
+          balance_after: number
+          transaction_type: string
+          purchase_id: string | null
+          video_id: string | null
+          description: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          amount: number
+          balance_after: number
+          transaction_type: string
+          purchase_id?: string | null
+          video_id?: string | null
+          description: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          amount?: number
+          balance_after?: number
+          transaction_type?: string
+          purchase_id?: string | null
+          video_id?: string | null
+          description?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_transactions_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      vidu_webhook_logs: {
+        Row: {
+          id: string
+          vidu_task_id: string | null
+          payload: Json
+          processed: boolean
+          error_message: string | null
+          received_at: string
+        }
+        Insert: {
+          id?: string
+          vidu_task_id?: string | null
+          payload: Json
+          processed?: boolean
+          error_message?: string | null
+          received_at?: string
+        }
+        Update: {
+          id?: string
+          vidu_task_id?: string | null
+          payload?: Json
+          processed?: boolean
+          error_message?: string | null
+          received_at?: string
         }
         Relationships: []
       }
