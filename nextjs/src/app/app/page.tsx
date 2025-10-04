@@ -5,6 +5,8 @@ import { useDropzone } from "react-dropzone";
 import useDragScroll from "@/hooks/useDragScroll";
 import { createSPAClient } from "@/lib/supabase/client";
 import { processImageForVidu } from "@/lib/image-processor";
+import { VideoGeneration, UserProfile } from "@/types/database.types";
+import { VideoList } from "@/components/VideoList";
 import Link from "next/link";
 import {
   Upload,
@@ -16,8 +18,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-import { VideoGeneration } from "@/types/database.types";
-import Link from "next/link";
+export default function VideoGeneratorUI() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<VideoGeneration | null>(
     null
@@ -36,56 +37,123 @@ import Link from "next/link";
   const sliderRef = useDragScroll();
   const supabase = createSPAClient();
 
-  // Cargar datos del usuario
+  // Cargar datos del usuario y configurar suscripciones
   useEffect(() => {
-    loadUserData();
-    const interval = setInterval(loadUserData, 5000); // Actualizar cada 5s
-    return () => clearInterval(interval);
-  }, []);
+    let videoSubscription: ReturnType<typeof supabase.channel> | null = null;
 
-  async function loadUserData() {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        window.location.href = "/auth/login";
-        return;
-      }
-
-      setUserId(user.id);
-
-      // Cargar perfil
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("credits_balance")
-        .eq("id", user.id)
-        .single();
-
-      if (profile) {
-        setCredits(profile.credits_balance);
-      }
-
-      // Cargar videos
-      const { data: videosData } = await supabase
-        .from("video_generations")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(20);
-
-      if (videosData) {
-        setVideos(videosData as VideoGeneration[]);
-        if (!selectedVideo && videosData.length > 0) {
-          setSelectedVideo(videosData[0] as VideoGeneration);
+    async function initializeUserData() {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) {
+          window.location.href = "/auth/login";
+          return;
         }
+
+        setUserId(user.id);
+
+        // Cargar perfil inicial
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("credits_balance")
+          .eq("id", user.id)
+          .single();
+
+        if (profile && "credits_balance" in profile) {
+          setCredits(profile.credits_balance);
+        }
+
+        // Cargar videos iniciales (Solo Completed y Pending)
+        const { data: videosData, error } = await supabase
+          .from("video_generations")
+          .select("*")
+          .eq("user_id", user.id)
+          // 🔑 CAMBIO CLAVE: Filtra por una lista de estados permitidos
+          .in("status", ["completed", "pending"])
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        if (videosData) {
+          setVideos(videosData);
+          if (!selectedVideo && videosData.length > 0) {
+            setSelectedVideo(videosData[0]);
+          }
+        }
+
+        // Suscribirse a cambios en los videos
+        videoSubscription = supabase
+          .channel("video_updates")
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "video_generations",
+              filter: `user_id=eq.${user.id}`,
+            },
+            async (payload: any) => {
+              console.log("Video update:", payload);
+              const updatedVideo = payload.new as VideoGeneration;
+
+              // Asegurarse de que el video existe en nuestro estado antes de actualizarlo
+              setVideos((prevVideos) => {
+                const videoExists = prevVideos.some(
+                  (v) => v.id === updatedVideo.id
+                );
+                if (!videoExists) return prevVideos;
+
+                return prevVideos.map((video) =>
+                  video.id === updatedVideo.id
+                    ? { ...video, ...updatedVideo }
+                    : video
+                );
+              });
+
+              // Actualizar selectedVideo si es el que cambió
+              setSelectedVideo((current) =>
+                current?.id === updatedVideo.id
+                  ? { ...current, ...updatedVideo }
+                  : current
+              );
+            }
+          )
+          .subscribe();
+
+        // Suscribirse a cambios en el perfil (créditos)
+        supabase
+          .channel("profile_updates")
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "user_profiles",
+              filter: `id=eq.${user.id}`,
+            },
+            (payload: any) => {
+              const updatedProfile = payload.new as UserProfile;
+              if ("credits_balance" in updatedProfile) {
+                setCredits(updatedProfile.credits_balance);
+              }
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.error("Error loading user data:", err);
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error("Error loading user data:", err);
-    } finally {
-      setLoading(false);
     }
-  }
+
+    initializeUserData();
+
+    return () => {
+      if (videoSubscription) {
+        supabase.removeChannel(videoSubscription);
+      }
+    };
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { "image/*": [".png", ".jpg", ".jpeg", ".webp"] },
@@ -154,8 +222,39 @@ import Link from "next/link";
         throw new Error(data.error || "Error al generar video");
       }
 
-      // Actualizar datos
-      await loadUserData();
+      // Crear placeholder para el nuevo video
+      const newVideo: VideoGeneration = {
+        id: data.videoId,
+        user_id: userId,
+        prompt: prompt.trim(),
+        input_image_url: preview || "",
+        input_image_path: null,
+        model: "viduq1",
+        duration: 5,
+        aspect_ratio: "1:1",
+        resolution: "1080p",
+        vidu_task_id: data.taskId,
+        vidu_creation_id: null,
+        status: "pending",
+        credits_used: 1,
+        video_url: null,
+        cover_url: preview,
+        video_duration_actual: null,
+        video_fps: null,
+        bgm: false,
+        error_message: null,
+        error_code: null,
+        retry_count: 0,
+        max_retries: 3,
+        vidu_full_response: null,
+        created_at: new Date().toISOString(),
+        started_at: null,
+        completed_at: null,
+      };
+
+      // Actualizar la lista de videos y seleccionar el nuevo
+      setVideos((prev) => [newVideo, ...prev]);
+      setSelectedVideo(newVideo);
 
       // Limpiar formulario
       setSelectedFile(null);
@@ -194,10 +293,13 @@ import Link from "next/link";
           <video
             loop
             controls
-            poster={selectedVideo.cover_url}
+            poster={selectedVideo.cover_url || undefined}
             className="w-full h-full"
           >
-            <source src={selectedVideo.video_url} type="video/mp4" />
+            <source
+              src={selectedVideo.video_url || undefined}
+              type="video/mp4"
+            />
           </video>
         ) : (
           <div className="w-full h-full flex items-center justify-center text-zinc-500">
@@ -396,10 +498,13 @@ import Link from "next/link";
                 controls
                 loop
                 preload="metadata"
-                poster={selectedVideo.cover_url}
+                poster={selectedVideo.cover_url || undefined}
                 className="w-full h-full"
               >
-                <source src={selectedVideo.video_url} type="video/mp4" />
+                <source
+                  src={selectedVideo.video_url || undefined}
+                  type="video/mp4"
+                />
               </video>
             ) : (
               <div className="w-full h-full flex items-center justify-center text-zinc-500">
@@ -409,58 +514,14 @@ import Link from "next/link";
           </div>
 
           {/* Slider de videos */}
-          <div>
-            <h3 className="text-lg font-bold text-emerald-500 mb-3">
-              Videos generados ({videos.length})
-            </h3>
-            {videos.length > 0 ? (
-              <div
-                ref={sliderRef}
-                className="flex space-x-4 overflow-x-auto pb-3 custom-scrollbar cursor-grab active:cursor-grabbing"
-              >
-                {videos.map((video) => (
-                  <div
-                    key={video.id}
-                    onClick={() => setSelectedVideo(video)}
-                    className={`flex-shrink-0 w-32 aspect-square rounded-lg overflow-hidden cursor-pointer transition-all duration-200 ${
-                      selectedVideo?.id === video.id
-                        ? "border-4 border-emerald-500 shadow-xl scale-105"
-                        : "border-2 border-zinc-700 hover:border-emerald-300"
-                    }`}
-                    style={{ minWidth: "8rem" }}
-                  >
-                    <img
-                      src={
-                        video.cover_url ||
-                        "https://placehold.co/400x400?text=Processing"
-                      }
-                      alt="Thumbnail"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-zinc-500 text-center py-8">
-                No tienes videos generados aún
-              </p>
-            )}
-          </div>
+          <VideoList
+            videos={videos}
+            selectedVideo={selectedVideo}
+            onSelectVideo={setSelectedVideo}
+            sliderRef={sliderRef}
+          />
         </div>
       </div>
-
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          height: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background-color: #3f3f46;
-          border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #27272a;
-        }
-      `}</style>
     </div>
   );
 }
