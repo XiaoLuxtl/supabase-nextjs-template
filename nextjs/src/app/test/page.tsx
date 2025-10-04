@@ -2,7 +2,7 @@
 "use client";
 
 import React from "react";
-// 🔑 Importa el hook tipado (ajusta la ruta si es necesario)
+import { useDropzone } from "react-dropzone";
 import useDragScroll from "@/hooks/useDragScroll";
 import {
   Upload,
@@ -10,6 +10,7 @@ import {
   Share2,
   DollarSign,
   Loader2,
+  Image as ImageIcon,
 } from "lucide-react";
 
 // --- Tipado de Datos ---
@@ -81,11 +82,44 @@ const VideoGeneratorUI: React.FC = () => {
   const [selectedVideo, setSelectedVideo] = React.useState<Video | undefined>(
     data.videosGenerados.find((v) => v.isMain)
   );
+  const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
+  const [preview, setPreview] = React.useState<string | null>(null);
 
   // 🔑 Llama al hook y obtén la referencia
   const sliderRef = useDragScroll();
 
+  // Configuración de react-dropzone
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    accept: {
+      "image/*": [".png", ".jpg", ".jpeg", ".tiff"],
+    },
+    maxSize: 10485760, // 10MB
+    multiple: false,
+    onDrop: (acceptedFiles) => {
+      const file = acceptedFiles[0];
+      setSelectedFile(file);
+
+      // Crear preview
+      const objectUrl = URL.createObjectURL(file);
+      setPreview(objectUrl);
+    },
+  });
+
+  // Limpiar el preview cuando el componente se desmonte
+  React.useEffect(() => {
+    return () => {
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
+    };
+  }, [preview]);
+
   const handleGenerateClick = () => {
+    if (!selectedFile) {
+      alert("Por favor selecciona una imagen primero");
+      return;
+    }
+
     setIsGenerating(true);
     setTimeout(() => {
       setIsGenerating(false);
@@ -149,14 +183,49 @@ const VideoGeneratorUI: React.FC = () => {
           </h1>
 
           {/* 1. Caja para Arrastrar/Subir Imagen */}
-          <div className="bg-zinc-800 p-6 rounded-lg border-2 border-pink-500/80 shadow-lg hover:border-pink-50 transition-colors cursor-pointer text-center h-64 flex flex-col justify-center items-center">
-            <Upload className="h-10 w-10 text-pink-400 mb-3" />
-            <p className="text-xl font-semibold text-pink-100">
-              Click o arrastra tu foto aquí
-            </p>
-            <p className="text-sm text-zinc-400 mt-1">
-              (PNG, JPG o TIFF - Máx 10MB)
-            </p>
+          <div
+            {...getRootProps()}
+            className={`bg-zinc-800 p-6 rounded-lg border-2 ${
+              isDragActive
+                ? "border-emerald-500 bg-zinc-700/50"
+                : "border-pink-500/80"
+            } shadow-lg hover:border-pink-50 transition-all cursor-pointer text-center h-64 flex flex-col justify-center items-center relative overflow-hidden`}
+          >
+            <input {...getInputProps()} />
+            {preview ? (
+              <>
+                <img
+                  src={preview}
+                  alt="Preview"
+                  className="absolute inset-0 w-full h-full object-cover opacity-30"
+                />
+                <div className="relative z-10 bg-zinc-900/80 p-4 rounded-lg">
+                  <ImageIcon className="h-10 w-10 text-emerald-400 mb-3 mx-auto" />
+                  <p className="text-lg font-semibold text-emerald-100">
+                    ¡Imagen seleccionada!
+                  </p>
+                  <p className="text-sm text-zinc-400 mt-1">
+                    Click o arrastra para cambiar
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Upload
+                  className={`h-10 w-10 mb-3 ${
+                    isDragActive ? "text-emerald-400" : "text-pink-400"
+                  }`}
+                />
+                <p className="text-xl font-semibold text-pink-100">
+                  {isDragActive
+                    ? "¡Suelta la imagen aquí!"
+                    : "Click o arrastra tu foto aquí"}
+                </p>
+                <p className="text-sm text-zinc-400 mt-1">
+                  (PNG, JPG o TIFF - Máx 10MB)
+                </p>
+              </>
+            )}
           </div>
 
           {/* 2. Caja de Descripción (Text Area) */}

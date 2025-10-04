@@ -1,3 +1,4 @@
+// src/app/api/payments/create-preference/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import { createClient } from '@supabase/supabase-js';
@@ -13,7 +14,7 @@ const preference = new Preference(client);
 // Supabase server client
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.PRIVATE_SUPABASE_SERVICE_KEY!
 );
 
 export async function POST(request: NextRequest) {
@@ -86,7 +87,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Crear preferencia en Mercado Pago
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    let appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    // Ensure URL doesn't end with a slash
+    appUrl = appUrl.replace(/\/$/, '');
     
     const preferenceData = {
       items: [
@@ -102,9 +105,8 @@ export async function POST(request: NextRequest) {
       back_urls: {
         success: `${appUrl}/paquetes/success`,
         failure: `${appUrl}/paquetes/failure`,
-        pending: `${appUrl}/paquetes/pending`
+        pending: `${appUrl}/paquetes/success`
       },
-      auto_return: 'approved' as const,
       notification_url: `${appUrl}/api/payments/webhook`,
       external_reference: purchase.id, // ID de nuestra compra
       metadata: {
@@ -113,6 +115,9 @@ export async function POST(request: NextRequest) {
         credits_amount: finalCredits
       }
     };
+
+    console.log('Success URL:', preferenceData.back_urls.success);
+    console.log('Full preference data:', JSON.stringify(preferenceData, null, 2));
 
     const mpPreference = await preference.create({ body: preferenceData });
 

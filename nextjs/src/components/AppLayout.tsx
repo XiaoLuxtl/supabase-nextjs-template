@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -10,18 +10,19 @@ import {
   ChevronDown,
   LogOut,
   Key,
-  Files,
-  LucideListTodo,
+  ChevronLast,
+  ChevronFirst,
 } from "lucide-react";
 import { useGlobal } from "@/lib/context/GlobalContext";
 import { createSPASassClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isUserDropdownOpen, setUserDropdownOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-
   const { user } = useGlobal();
 
   const handleLogout = async () => {
@@ -32,6 +33,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       console.error("Error logging out:", error);
     }
   };
+
   const handleChangePassword = async () => {
     router.push("/app/user-settings");
   };
@@ -47,8 +49,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navigation = [
     { name: "Inicio", href: "/app", icon: Home },
-    { name: "Almacenamiento", href: "/app/storage", icon: Files },
-    { name: "Tabla", href: "/app/table", icon: LucideListTodo },
     {
       name: "Configuración de Usuario",
       href: "/app/user-settings",
@@ -58,89 +58,64 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const toggleSidebar = () => setSidebarOpen(!isSidebarOpen);
 
+  // Cerrar el menú de usuario al hacer clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isUserDropdownOpen) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('[data-dropdown="user-menu"]')) {
+          setUserDropdownOpen(false);
+        }
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isUserDropdownOpen]);
+
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Overlay para móvil */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 bg-gray-600 bg-opacity-75 z-20 lg:hidden"
+          className="fixed inset-0 bg-gray-600 bg-opacity-75 z-40 lg:hidden"
           onClick={toggleSidebar}
         />
       )}
 
-      {/* Sidebar */}
-      <div
-        className={`fixed inset-y-0 left-0 w-64 bg-white shadow-lg transform transition-transform duration-200 ease-in-out z-30 
-                ${
-                  isSidebarOpen ? "translate-x-0" : "-translate-x-full"
-                } lg:translate-x-0`}
-      >
-        <div className="h-16 flex items-center justify-between px-4 border-b">
-          <span className="text-xl font-semibold text-primary-600">
-            {productName}
-          </span>
-          <button
-            onClick={toggleSidebar}
-            className="lg:hidden text-gray-500 hover:text-gray-700"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
+      {/* Barra superior móvil */}
+      <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm z-50 lg:hidden">
+        <div className="flex items-center justify-between h-full px-4">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={toggleSidebar}
+              className="p-2 rounded-lg bg-white/30 backdrop-blur-sm border border-white/50 shadow-lg text-gray-700 hover:text-gray-900 hover:bg-white/40 transition-all"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+            <span className="text-lg font-semibold text-primary-600 truncate">
+              {productName}
+            </span>
+          </div>
 
-        {/* Navigation */}
-        <nav className="mt-4 px-2 space-y-1">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
-                  isActive
-                    ? "bg-primary-50 text-primary-600"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                }`}
-              >
-                <item.icon
-                  className={`mr-3 h-5 w-5 ${
-                    isActive
-                      ? "text-primary-500"
-                      : "text-gray-400 group-hover:text-gray-500"
-                  }`}
-                />
-                {item.name}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-
-      <div className="lg:pl-64">
-        <div className="sticky top-0 z-10 flex items-center justify-between h-16 bg-white shadow-sm px-4">
-          <button
-            onClick={toggleSidebar}
-            className="lg:hidden text-gray-500 hover:text-gray-700"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
-
-          <div className="relative ml-auto">
+          <div data-dropdown="user-menu" className="relative">
             <button
               onClick={() => setUserDropdownOpen(!isUserDropdownOpen)}
-              className="flex items-center space-x-2 text-sm text-gray-700 hover:text-gray-900"
+              className="flex items-center space-x-2 text-sm p-1.5 rounded-lg bg-white/30 backdrop-blur-sm border border-white/50 shadow-lg text-gray-700 hover:text-gray-900 hover:bg-white/40 transition-all"
             >
-              <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-primary-100/80 backdrop-blur-sm flex items-center justify-center">
                 <span className="text-primary-700 font-medium">
                   {user ? getInitials(user.email) : "??"}
                 </span>
               </div>
-              <span>{user?.email || "Loading..."}</span>
               <ChevronDown className="h-4 w-4" />
             </button>
 
+            {/* Menú desplegable de usuario */}
             {isUserDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg border">
-                <div className="p-2 border-b border-gray-100">
-                  <p className="text-xs text-gray-500">Conectado como</p>
+              <div className="absolute right-0 mt-2 w-64 bg-white/80 backdrop-blur-md rounded-lg shadow-lg border border-white/50">
+                <div className="p-2 border-b border-gray-200/50">
+                  <p className="text-xs text-gray-600">Conectado como</p>
                   <p className="text-sm font-medium text-gray-900 truncate">
                     {user?.email}
                   </p>
@@ -151,7 +126,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       setUserDropdownOpen(false);
                       handleChangePassword();
                     }}
-                    className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50/50 transition-colors"
                   >
                     <Key className="mr-3 h-4 w-4 text-gray-400" />
                     Cambiar Contraseña
@@ -161,7 +136,136 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                       handleLogout();
                       setUserDropdownOpen(false);
                     }}
-                    className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                    className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50/50 transition-colors"
+                  >
+                    <LogOut className="mr-3 h-4 w-4 text-red-400" />
+                    Cerrar Sesión
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Sidebar */}
+      <div
+        className={cn(
+          "fixed inset-y-0 left-0 bg-white shadow-lg transform transition-all duration-300 ease-in-out z-40",
+          isCollapsed ? "w-16" : "w-64",
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        )}
+      >
+        <div
+          className={cn(
+            "h-16 flex items-center border-b",
+            isCollapsed ? "justify-center px-2" : "justify-between px-4"
+          )}
+        >
+          {!isCollapsed && (
+            <span className="text-xl font-semibold text-primary-600 truncate">
+              {productName}
+            </span>
+          )}
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="hidden lg:block text-gray-500 hover:text-gray-700"
+          >
+            {isCollapsed ? (
+              <ChevronLast className="h-5 w-5" />
+            ) : (
+              <ChevronFirst className="h-5 w-5" />
+            )}
+          </button>
+          <button
+            onClick={toggleSidebar}
+            className="lg:hidden text-gray-500 hover:text-gray-700"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+
+        {/* Navigation */}
+        <nav className={cn("mt-4 space-y-1", isCollapsed ? "px-1" : "px-2")}>
+          {navigation.map((item) => {
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={cn(
+                  "group flex items-center py-2 text-sm font-medium rounded-md",
+                  isCollapsed ? "px-1 justify-center" : "px-2",
+                  isActive
+                    ? "bg-primary-50 text-primary-600"
+                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                )}
+                title={isCollapsed ? item.name : undefined}
+              >
+                <item.icon
+                  className={cn(
+                    "flex-shrink-0 h-5 w-5",
+                    isCollapsed ? "mx-auto" : "mr-3",
+                    isActive
+                      ? "text-primary-500"
+                      : "text-gray-400 group-hover:text-gray-500"
+                  )}
+                />
+                {!isCollapsed && item.name}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Contenido principal */}
+      <div
+        className={cn(
+          "transition-all duration-300 pt-16 lg:pt-0",
+          isCollapsed ? "lg:pl-16" : "lg:pl-64"
+        )}
+      >
+        {/* Botón de usuario para desktop */}
+        <div className="fixed top-4 right-4 z-50 hidden lg:block">
+          <div data-dropdown="user-menu" className="relative">
+            <button
+              onClick={() => setUserDropdownOpen(!isUserDropdownOpen)}
+              className="flex items-center space-x-2 text-sm p-1.5 rounded-lg bg-white/30 backdrop-blur-sm border border-white/50 shadow-lg text-gray-700 hover:text-gray-900 hover:bg-white/40 transition-all"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary-100/80 backdrop-blur-sm flex items-center justify-center">
+                <span className="text-primary-700 font-medium">
+                  {user ? getInitials(user.email) : "??"}
+                </span>
+              </div>
+              <ChevronDown className="h-4 w-4" />
+            </button>
+
+            {/* Menú desplegable de usuario en desktop */}
+            {isUserDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-64 bg-white/80 backdrop-blur-md rounded-lg shadow-lg border border-white/50">
+                <div className="p-2 border-b border-gray-200/50">
+                  <p className="text-xs text-gray-600">Conectado como</p>
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {user?.email}
+                  </p>
+                </div>
+                <div className="py-1">
+                  <button
+                    onClick={() => {
+                      setUserDropdownOpen(false);
+                      handleChangePassword();
+                    }}
+                    className="w-full flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-50/50 transition-colors"
+                  >
+                    <Key className="mr-3 h-4 w-4 text-gray-400" />
+                    Cambiar Contraseña
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setUserDropdownOpen(false);
+                    }}
+                    className="w-full flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50/50 transition-colors"
                   >
                     <LogOut className="mr-3 h-4 w-4 text-red-400" />
                     Cerrar Sesión
@@ -172,7 +276,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        <main className="p-4">{children}</main>
+        <main>{children}</main>
       </div>
     </div>
   );

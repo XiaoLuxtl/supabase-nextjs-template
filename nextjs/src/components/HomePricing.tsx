@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { Check, Plus, Minus, Loader2 } from "lucide-react";
 import { usePackages } from "@/hooks/usePackages";
+import { createSPAClient } from "@/lib/supabase/client";
 import type { CreditPackage } from "@/types/database.types";
 import {
   Card,
@@ -13,8 +14,15 @@ import {
 } from "@/components/ui/card";
 
 // Componente para el card dinámico de créditos
-const DynamicCreditCard = ({ package: pkg }: { package: CreditPackage }) => {
+const DynamicCreditCard = ({
+  package: pkg,
+  onPurchase,
+}: {
+  package: CreditPackage;
+  onPurchase: (pkg: CreditPackage, credits: number) => void;
+}) => {
   const [credits, setCredits] = useState(pkg.min_credits || 15);
+  const [isPurchasing, setIsPurchasing] = useState(false);
   const totalPrice = credits * (pkg.price_per_credit || 30);
 
   const handleCreditsChange = (amount: number) => {
@@ -79,10 +87,22 @@ const DynamicCreditCard = ({ package: pkg }: { package: CreditPackage }) => {
         </ul>
 
         <Link
-          href={`/paquetes?package=${pkg.id}&credits=${credits}`}
-          className="w-full text-center px-6 py-3 rounded-lg font-medium transition-colors bg-gray-50 hover:bg-gray-100 text-gray-900"
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            setIsPurchasing(true);
+            onPurchase(pkg, credits);
+          }}
+          className="w-full text-center px-6 py-3 rounded-lg font-medium transition-colors bg-gray-50 hover:bg-gray-100 text-gray-900 flex items-center justify-center gap-2"
         >
-          Comprar {credits} Créditos
+          {isPurchasing ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Procesando...
+            </>
+          ) : (
+            `Comprar ${credits} Créditos`
+          )}
         </Link>
       </CardContent>
     </Card>
@@ -91,6 +111,50 @@ const DynamicCreditCard = ({ package: pkg }: { package: CreditPackage }) => {
 
 const HomePricing = () => {
   const { fixedPackages, customPackage, loading, error } = usePackages();
+  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const supabase = createSPAClient();
+
+  async function handlePurchase(pkg: CreditPackage, customCredits?: number) {
+    setPurchasing(pkg.id);
+
+    try {
+      // Verificar autenticación
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("Debes iniciar sesión para comprar");
+        window.location.href = "/auth/login";
+        return;
+      }
+
+      // Crear preferencia de pago
+      const response = await fetch("/api/payments/create-preference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          package_id: pkg.id,
+          credits_amount: customCredits,
+          user_id: user.id,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al crear preferencia");
+      }
+
+      // Redirigir a Mercado Pago (sandbox en TEST)
+      const checkoutUrl = data.sandbox_init_point || data.init_point;
+      window.location.href = checkoutUrl;
+    } catch (error) {
+      console.error("Error:", error);
+      alert("Error al procesar el pago. Intenta nuevamente.");
+      setPurchasing(null);
+    }
+  }
 
   // Features comunes (los únicos que quedan en env por ahora)
   const commonFeatures =
@@ -183,24 +247,34 @@ const HomePricing = () => {
                 </ul>
 
                 <button
-                  onClick={() => {
-                    // TODO: Implementar compra
-                    window.location.href = `/paquetes?package=${pkg.id}`;
-                  }}
-                  className={`w-full text-center px-6 py-3 rounded-lg font-medium transition-colors ${
+                  onClick={() => handlePurchase(pkg)}
+                  disabled={purchasing === pkg.id}
+                  className={`w-full text-center px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
                     pkg.is_popular
                       ? "bg-primary-600 text-white hover:bg-primary-700"
                       : "bg-gray-50 text-gray-900 hover:bg-gray-100"
                   }`}
                 >
-                  Comprar
+                  {purchasing === pkg.id ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Procesando...
+                    </>
+                  ) : (
+                    "Comprar"
+                  )}
                 </button>
               </CardContent>
             </Card>
           ))}
 
           {/* Paquete Custom */}
-          {customPackage && <DynamicCreditCard package={customPackage} />}
+          {customPackage && (
+            <DynamicCreditCard
+              package={customPackage}
+              onPurchase={handlePurchase}
+            />
+          )}
         </div>
 
         {commonFeatures.length > 0 && (

@@ -1,3 +1,4 @@
+// src/app/app/user-settings/page.tsx
 "use client";
 import React, { useState } from "react";
 import {
@@ -12,6 +13,7 @@ import { useGlobal } from "@/lib/context/GlobalContext";
 import { createSPASassClientAuthenticated as createSPASassClient } from "@/lib/supabase/client";
 import { Key, User, CheckCircle } from "lucide-react";
 import { MFASetup } from "@/components/MFASetup";
+import { CalendarDays, Settings, ExternalLink } from "lucide-react";
 
 export default function UserSettingsPage() {
   const { user } = useGlobal();
@@ -20,6 +22,23 @@ export default function UserSettingsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const getDaysSinceRegistration = () => {
+    if (!user?.registered_at) return 0;
+    const today = new Date();
+    const diffTime = Math.abs(today.getTime() - user.registered_at.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  const daysSinceRegistration = getDaysSinceRegistration();
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,6 +103,17 @@ export default function UserSettingsPage() {
 
       <div className="grid gap-6">
         <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Bienvenido, {user?.email?.split("@")[0]}! 👋
+              </CardTitle>
+              <CardDescription className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4" />
+                Miembro desde hace {daysSinceRegistration} días
+              </CardDescription>
+            </CardHeader>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
