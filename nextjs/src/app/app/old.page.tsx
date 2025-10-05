@@ -12,7 +12,6 @@ import { VideoGeneratorForm } from "@/components/VideoGeneratorForm";
 import { VideoPlayerMain } from "@/components/VideoPlayerMain";
 import { VideoPlayerMobile } from "@/components/VideoPlayerMobile";
 import { ArrowDownToLine, Loader2 } from "lucide-react";
-import { useGlobal } from "@/lib/context/GlobalContext";
 
 export default function VideoGeneratorUI() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -25,7 +24,8 @@ export default function VideoGeneratorUI() {
   const [error, setError] = useState<string | null>(null);
 
   // Estados de usuario
-  const { user, loading: globalLoading } = useGlobal();
+  const [userId, setUserId] = useState<string | null>(null);
+  const [credits, setCredits] = useState(0);
   const [videos, setVideos] = useState<VideoGeneration[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -38,15 +38,25 @@ export default function VideoGeneratorUI() {
 
     async function initializeUserData() {
       try {
-        // No hacer nada si aún está cargando el contexto global
-        if (globalLoading) {
-          return;
-        }
-
-        // Redirigir si no hay usuario después de cargar
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) {
           window.location.href = "/auth/login";
           return;
+        }
+
+        setUserId(user.id);
+
+        // Cargar perfil inicial
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("credits_balance")
+          .eq("id", user.id)
+          .single<UserProfile>();
+
+        if (profile && "credits_balance" in profile) {
+          setCredits(profile.credits_balance);
         }
 
         // Cargar videos iniciales (Solo Completed y Pending)
@@ -54,6 +64,7 @@ export default function VideoGeneratorUI() {
           .from("video_generations")
           .select("*")
           .eq("user_id", user.id)
+          // 🔑 CAMBIO CLAVE: Filtra por una lista de estados permitidos
           .in("status", ["completed", "pending"])
           .order("created_at", { ascending: false })
           .limit(20);
@@ -110,6 +121,26 @@ export default function VideoGeneratorUI() {
             }
           )
           .subscribe();
+
+        // Suscribirse a cambios en el perfil (créditos)
+        supabase
+          .channel("profile_updates")
+          .on(
+            "postgres_changes",
+            {
+              event: "UPDATE",
+              schema: "public",
+              table: "user_profiles",
+              filter: `id=eq.${user.id}`,
+            },
+            (payload: any) => {
+              const updatedProfile = payload.new as UserProfile;
+              if ("credits_balance" in updatedProfile) {
+                setCredits(updatedProfile.credits_balance);
+              }
+            }
+          )
+          .subscribe();
       } catch (err) {
         console.error("Error loading user data:", err);
       } finally {
@@ -124,7 +155,7 @@ export default function VideoGeneratorUI() {
         supabase.removeChannel(videoSubscription);
       }
     };
-  }, [user, globalLoading]);
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: { "image/*": [".png", ".jpg", ".jpeg", ".webp"] },
@@ -166,11 +197,11 @@ export default function VideoGeneratorUI() {
       setError("Por favor escribe una descripción.");
       return;
     }
-    if (!user) {
+    if (!userId) {
       setError("No se ha detectado usuario. Intenta recargar la página.");
       return;
     }
-    if (user.credits_balance < 1) {
+    if (credits < 1) {
       setError("No tienes créditos suficientes");
       return;
     }
@@ -180,7 +211,7 @@ export default function VideoGeneratorUI() {
 
     try {
       // Procesar imagen (solo para obtener el base64)
-      const processed = await processImageForVidu(selectedFile!);
+      const processed = await processImageForVidu(selectedFile!); // Usamos ! porque ya validamos selectedFile
 
       // Llamar al API
       const response = await fetch("/api/vidu/generate", {
@@ -188,30 +219,25 @@ export default function VideoGeneratorUI() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           image_base64: processed.base64,
-          prompt: prompt.trim(),
-          user_id: user.id,
+          prompt: prompt.trim(), // ⬅️ Enviamos el prompt original
+          user_id: userId,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        // Manejar error de contenido NSFW
-        if (data.code === "NSFW_CONTENT") {
-          setError("❌ " + data.error);
-          throw new Error("❌ " + data.error);
-        }
         throw new Error(data.error || "Error al generar video");
       }
 
-      // Capturar el prompt refinado del API
+      // 🔑 CAPTURAR EL PROMPT REFINADO DEL API
       const finalPrompt = data.refined_prompt || prompt.trim();
 
       // Crear placeholder para el nuevo video
       const newVideo: VideoGeneration = {
-        id: data.generation_id,
-        user_id: user.id,
-        prompt: finalPrompt,
+        id: data.generation_id, // Usar generation_id
+        user_id: userId!,
+        prompt: finalPrompt, // ⬅️ USAR EL PROMPT REFINADO
         input_image_url: preview || "",
         input_image_path: null,
         model: "viduq1",
@@ -237,6 +263,7 @@ export default function VideoGeneratorUI() {
         completed_at: null,
       };
 
+      // ... (Resto de la lógica de actualización de estados)
       setVideos((prev) => [newVideo, ...prev]);
       setSelectedVideo(newVideo);
 
@@ -258,7 +285,7 @@ export default function VideoGeneratorUI() {
     }
   };
 
-  if (globalLoading || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
         <Loader2 className="h-12 w-12 text-pink-500 animate-spin" />
@@ -277,7 +304,7 @@ export default function VideoGeneratorUI() {
         <div className="lg:col-span-1">
           <VideoGeneratorForm
             isGenerating={isGenerating}
-            credits={user?.credits_balance ?? 0}
+            credits={credits}
             error={error}
             selectedFile={selectedFile}
             preview={preview}

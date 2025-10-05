@@ -56,8 +56,42 @@ export function GlobalProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refreshUserProfile();
+
+    // Suscribirse a cambios en el perfil del usuario
+    const setupSubscription = async () => {
+      const supabase = await createSPASassClient();
+      const client = supabase.getSupabaseClient();
+
+      // Suscribirse a cambios en user_profiles
+      const subscription = client
+        .channel("user-profile-changes")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "user_profiles",
+            filter: `id=eq.${user?.id}`,
+          },
+          () => {
+            // Refrescar el perfil cuando haya cambios
+            refreshUserProfile();
+          }
+        )
+        .subscribe();
+
+      // Limpiar suscripción
+      return () => {
+        subscription.unsubscribe();
+      };
+    };
+
+    if (user?.id) {
+      setupSubscription();
+    }
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id]);
 
   return (
     <GlobalContext.Provider value={{ loading, user, refreshUserProfile }}>

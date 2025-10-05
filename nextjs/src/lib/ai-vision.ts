@@ -8,8 +8,62 @@ const openai = new OpenAI({
 });
 
 /**
- * Genera una descripción de texto detallada de una imagen codificada en Base64 usando GPT-4o Vision.
- * * @param imageBase64 La imagen en formato Base64 (sin el prefijo 'data:image/...').
+ * Verifica si una imagen contiene contenido NSFW
+ * @param imageBase64 La imagen en formato Base64
+ * @returns Un objeto con el resultado del análisis
+ */
+export async function checkNSFWContent(imageBase64: string): Promise<{ isNSFW: boolean; reason?: string }> {
+    const systemPrompt = `Eres un sistema de moderación de contenido. Tu tarea es evaluar si la imagen contiene contenido no apto para todo público (NSFW).
+    Analiza la imagen en busca de:
+    1. Desnudez o contenido sexual explícito
+    2. Violencia gráfica
+    3. Contenido perturbador o gore
+    4. Drogas ilegales o parafernalia
+    5. Símbolos de odio o extremismo
+
+    Responde ÚNICAMENTE con un objeto JSON con el siguiente formato:
+    {
+        "isNSFW": boolean,
+        "reason": "breve explicación si es NSFW" // solo si isNSFW es true
+    }`;
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+                { role: "system", content: systemPrompt },
+                {
+                    role: "user",
+                    content: [
+                        { type: "text", text: "Analiza esta imagen:" },
+                        {
+                            type: "image_url",
+                            image_url: {
+                                url: `data:image/jpeg;base64,${imageBase64}`,
+                                detail: "low",
+                            },
+                        },
+                    ],
+                },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+        });
+
+        const result = JSON.parse(response.choices[0].message.content || "{}");
+        return {
+            isNSFW: result.isNSFW || false,
+            reason: result.reason
+        };
+    } catch (error) {
+        console.error("Error al analizar contenido NSFW:", error);
+        return { isNSFW: false };
+    }
+}
+
+/**
+ * Genera una descripción de texto detallada de una imagen codificada en Base64 usando GPT-4 Vision.
+ * @param imageBase64 La imagen en formato Base64 (sin el prefijo 'data:image/...').
  * @returns Una descripción de texto detallada para la generación de video.
  */
 export async function describeImage(imageBase64: string): Promise<string> {

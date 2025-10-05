@@ -21,7 +21,48 @@ export async function POST(request: NextRequest) {
         processed: false
       });
 
-    // Verificar que sea una notificación de éxito
+    // Verificar el estado de la generación
+    if (body.state === 'failed') {
+      // Buscar la generación para actualizar su estado
+      const { data: generation } = await supabase
+        .from('video_generations')
+        .select('*')
+        .eq('vidu_task_id', body.id)
+        .single();
+
+      if (generation) {
+        // Verificar si es un error de contenido NSFW
+        const isNSFWError = body.error?.toLowerCase().includes('nsfw') || 
+                           body.error?.toLowerCase().includes('inappropriate') ||
+                           body.error?.toLowerCase().includes('adult content');
+
+        // Actualizar el estado con el error específico
+        await supabase
+          .from('video_generations')
+          .update({
+            status: 'failed',
+            error_code: isNSFWError ? 'NSFW_CONTENT' : 'VIDU_ERROR',
+            error_message: isNSFWError 
+              ? 'Contenido no permitido: La imagen contiene contenido inapropiado'
+              : body.error || 'Error en la generación del video',
+            completed_at: new Date().toISOString(),
+            vidu_full_response: body
+          })
+          .eq('id', generation.id);
+
+        // Si es error NSFW, devolver los créditos al usuario
+        if (isNSFWError) {
+          await supabase.rpc('refund_credit_for_video', {
+            p_user_id: generation.user_id,
+            p_video_id: generation.id
+          });
+        }
+      }
+
+      return NextResponse.json({ received: true, error: body.error });
+    }
+
+    // Continuar solo si es una notificación de éxito
     if (body.state !== 'success') {
       console.log('Webhook not success state:', body.state);
       return NextResponse.json({ received: true });

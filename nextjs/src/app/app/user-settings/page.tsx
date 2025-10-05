@@ -103,17 +103,36 @@ export default function UserSettingsPage() {
 
       <div className="grid gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                Bienvenido, {user?.email?.split("@")[0]}! 👋
-              </CardTitle>
-              <CardDescription className="flex items-center gap-2">
-                <CalendarDays className="h-4 w-4" />
-                Miembro desde hace {daysSinceRegistration} días
-              </CardDescription>
-            </CardHeader>
-          </Card>
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  Bienvenido, {user?.email?.split("@")[0]}! 👋
+                </CardTitle>
+                <CardDescription className="flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4" />
+                  Miembro desde hace {daysSinceRegistration} días
+                </CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span className="text-emerald-500">💎</span>
+                  Créditos disponibles
+                </CardTitle>
+                <CardDescription>Tu saldo actual de créditos</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold text-emerald-500">
+                  {user?.credits_balance ?? 0} créditos
+                </div>
+                <p className="mt-2 text-sm text-gray-500">
+                  Usa tus créditos para generar videos y otros servicios
+                </p>
+              </CardContent>
+            </Card>
+          </div>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

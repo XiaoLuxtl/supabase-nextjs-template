@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useGlobal } from "@/lib/context/GlobalContext";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -16,7 +17,7 @@ export default function SuccessPage() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(true);
-  const [credits, setCredits] = useState(0);
+  const { user, refreshUserProfile } = useGlobal();
   const [error, setError] = useState<string | null>(null);
   const supabase = createSPAClient();
 
@@ -32,14 +33,14 @@ export default function SuccessPage() {
     // Si no hay payment_id, solo cargar créditos (ya se procesó antes)
     if (!paymentId || !externalReference) {
       setProcessing(false);
-      await loadUserCredits();
+      await refreshUserProfile();
       return;
     }
 
     // Si el status no es approved, no procesar
     if (status !== "approved") {
       setProcessing(false);
-      await loadUserCredits();
+      await refreshUserProfile();
       return;
     }
 
@@ -70,7 +71,7 @@ export default function SuccessPage() {
       console.log("Payment processed:", data);
 
       if (data.credits_applied) {
-        setCredits(data.new_balance);
+        await refreshUserProfile();
       }
     } catch (err: any) {
       console.error("Error processing payment:", err);
@@ -78,31 +79,7 @@ export default function SuccessPage() {
     }
 
     setProcessing(false);
-    await loadUserCredits();
-  }
-
-  async function loadUserCredits() {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("credits_balance")
-          .eq("id", user.id)
-          .single();
-
-        if (profile) {
-          setCredits(profile.credits_balance);
-        }
-      }
-    } catch (error) {
-      console.error("Error loading credits:", error);
-    } finally {
-      setLoading(false);
-    }
+    await refreshUserProfile();
   }
 
   if (processing || loading) {
@@ -173,7 +150,9 @@ export default function SuccessPage() {
             <span className="text-zinc-400">Tus créditos disponibles:</span>
             <Sparkles className="w-5 h-5 text-pink-500" />
           </div>
-          <div className="text-4xl font-bold text-emerald-500">{credits}</div>
+          <div className="text-4xl font-bold text-emerald-500">
+            {user?.credits_balance ?? 0}
+          </div>
         </div>
 
         {/* Info */}

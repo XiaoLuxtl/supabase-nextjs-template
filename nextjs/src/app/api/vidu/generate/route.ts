@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { refineViduPrompt } from '@/lib/prompt-refiner'; // ⬅️ Importar el refinador
-import { describeImage } from '@/lib/ai-vision'; // ⬅️ Importar el analista de imágenes (nuevo)
+import { describeImage, checkNSFWContent } from '@/lib/ai-vision'; // ⬅️ Importar funciones de IA Vision
 
 
 const supabase = createClient(
@@ -51,8 +51,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 🔑 PASO DE IA 1: Análisis de Imagen con GPT-4o Vision
-    console.log('Analyzing image with GPT-4o Vision...');
+    // Verificar si la imagen es apropiada
+    console.log('Checking image content...');
+    const nsfwCheck = await checkNSFWContent(image_base64);
+    if (nsfwCheck.isNSFW) {
+      console.log('NSFW content detected:', nsfwCheck.reason);
+      return NextResponse.json(
+        { 
+          error: 'Contenido no permitido: ' + (nsfwCheck.reason || 'La imagen contiene contenido inapropiado'),
+          code: 'NSFW_CONTENT'
+        }, 
+        { status: 400 }
+      );
+    }
+
+    // 🔑 PASO DE IA 1: Análisis de Imagen con GPT-4 Vision
+    console.log('Analyzing image with GPT-4 Vision...');
     const imageDescription = await describeImage(image_base64);
     console.log('Image Description:', imageDescription);
 
