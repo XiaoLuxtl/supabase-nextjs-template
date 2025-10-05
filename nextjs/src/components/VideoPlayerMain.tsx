@@ -1,0 +1,31 @@
+import React from "react";
+import { VideoGeneration } from "@/types/database.types";
+
+interface VideoPlayerMainProps {
+  selectedVideo: VideoGeneration | null;
+}
+
+export const VideoPlayerMain: React.FC<VideoPlayerMainProps> = ({
+  selectedVideo,
+}) => {
+  return (
+    <div className="hidden lg:block bg-zinc-800 rounded-lg shadow-2xl overflow-hidden aspect-video relative border-2 border-emerald-500">
+      {selectedVideo?.video_url ? (
+        <video
+          key={selectedVideo.id}
+          controls
+          loop
+          preload="metadata"
+          poster={selectedVideo.cover_url || undefined}
+          className="w-full h-full"
+        >
+          <source src={selectedVideo.video_url || undefined} type="video/mp4" />
+        </video>
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-zinc-500">
+          No hay video seleccionado
+        </div>
+      )}
+    </div>
+  );
+};

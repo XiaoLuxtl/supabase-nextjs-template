@@ -1,5 +1,9 @@
+"use client";
+
 import React from "react";
 import Link from "next/link";
+import { useState, useEffect } from "react";
+import { createSPASassClient } from "@/lib/supabase/client";
 import { ArrowRight } from "lucide-react";
 
 // Importamos los componentes modulares
@@ -11,6 +15,24 @@ import HomeFeatures from "@/components/HomeFeatures";
 import HomeStats from "@/components/HomeStats";
 
 export default function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const supabase = await createSPASassClient();
+        const {
+          data: { user },
+        } = await supabase.getSupabaseClient().auth.getUser();
+        setIsAuthenticated(!!user);
+      } catch {
+        setIsAuthenticated(false);
+      } finally {
+        setLoadingAuth(false);
+      }
+    };
+    checkAuth();
+  }, []);
   const productName = process.env.NEXT_PUBLIC_PRODUCTNAME || "PixelPages";
 
   // El array 'stats' ha sido movido a HomeStats.jsx
@@ -61,13 +83,15 @@ export default function Home() {
               Únete a miles de usuarios transformando sus recuerdos con{" "}
               {productName}.
             </p>
-            <Link
-              href="/auth/register"
-              className="mt-8 inline-flex items-center px-6 py-3 rounded-lg bg-white text-pink-600 font-medium hover:bg-pink-50 transition-colors shadow-lg"
-            >
-              Comenzar Ahora
-              <ArrowRight className="ml-2 h-5 w-5" />
-            </Link>
+            {!loadingAuth && (
+              <Link
+                href={isAuthenticated ? "/app" : "/auth/register"}
+                className="mt-8 inline-flex items-center px-6 py-3 rounded-lg bg-white text-pink-600 font-medium hover:bg-pink-50 transition-colors shadow-lg"
+              >
+                {isAuthenticated ? "Ir al Panel" : "Comenzar Ahora"}
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
+            )}
           </div>
         </section>
 

@@ -1,3 +1,4 @@
+// src/app/app/page.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -7,16 +8,10 @@ import { createSPAClient } from "@/lib/supabase/client";
 import { processImageForVidu } from "@/lib/image-processor";
 import { VideoGeneration, UserProfile } from "@/types/database.types";
 import { VideoList } from "@/components/VideoList";
-import Link from "next/link";
-import {
-  Upload,
-  ArrowDownToLine,
-  Share2,
-  DollarSign,
-  Loader2,
-  Image as ImageIcon,
-  AlertCircle,
-} from "lucide-react";
+import { VideoGeneratorForm } from "@/components/VideoGeneratorForm";
+import { VideoPlayerMain } from "@/components/VideoPlayerMain";
+import { VideoPlayerMobile } from "@/components/VideoPlayerMobile";
+import { ArrowDownToLine, Loader2 } from "lucide-react";
 
 export default function VideoGeneratorUI() {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -58,7 +53,7 @@ export default function VideoGeneratorUI() {
           .from("user_profiles")
           .select("credits_balance")
           .eq("id", user.id)
-          .single();
+          .single<UserProfile>();
 
         if (profile && "credits_balance" in profile) {
           setCredits(profile.credits_balance);
@@ -96,26 +91,33 @@ export default function VideoGeneratorUI() {
               console.log("Video update:", payload);
               const updatedVideo = payload.new as VideoGeneration;
 
-              // Asegurarse de que el video existe en nuestro estado antes de actualizarlo
               setVideos((prevVideos) => {
                 const videoExists = prevVideos.some(
                   (v) => v.id === updatedVideo.id
                 );
-                if (!videoExists) return prevVideos;
-
-                return prevVideos.map((video) =>
-                  video.id === updatedVideo.id
-                    ? { ...video, ...updatedVideo }
-                    : video
-                );
+                if (videoExists) {
+                  // Actualiza el video existente
+                  return prevVideos.map((video) =>
+                    video.id === updatedVideo.id
+                      ? { ...video, ...updatedVideo }
+                      : video
+                  );
+                } else {
+                  // Si no existe, lo agrega al inicio
+                  return [updatedVideo, ...prevVideos];
+                }
               });
 
-              // Actualizar selectedVideo si es el que cambió
-              setSelectedVideo((current) =>
-                current?.id === updatedVideo.id
-                  ? { ...current, ...updatedVideo }
-                  : current
-              );
+              // Si el video acaba de pasar a 'completed', seleccionarlo automáticamente
+              setSelectedVideo((current) => {
+                if (current?.id === updatedVideo.id) {
+                  return { ...current, ...updatedVideo };
+                }
+                if (updatedVideo.status === "completed") {
+                  return { ...updatedVideo };
+                }
+                return current;
+              });
             }
           )
           .subscribe();
@@ -183,18 +185,24 @@ export default function VideoGeneratorUI() {
   }, [preview]);
 
   async function handleGenerateClick() {
-    if (!selectedFile || !userId) {
-      setError("Por favor selecciona una imagen primero");
+    if (!selectedFile && !prompt.trim()) {
+      setError("Por favor selecciona una imagen y escribe una descripción.");
       return;
     }
-
+    if (!selectedFile) {
+      setError("Por favor selecciona una imagen primero.");
+      return;
+    }
+    if (!prompt.trim()) {
+      setError("Por favor escribe una descripción.");
+      return;
+    }
+    if (!userId) {
+      setError("No se ha detectado usuario. Intenta recargar la página.");
+      return;
+    }
     if (credits < 1) {
       setError("No tienes créditos suficientes");
-      return;
-    }
-
-    if (!prompt.trim()) {
-      setError("Por favor escribe una descripción");
       return;
     }
 
@@ -202,8 +210,8 @@ export default function VideoGeneratorUI() {
     setError(null);
 
     try {
-      // Procesar imagen
-      const processed = await processImageForVidu(selectedFile);
+      // Procesar imagen (solo para obtener el base64)
+      const processed = await processImageForVidu(selectedFile!); // Usamos ! porque ya validamos selectedFile
 
       // Llamar al API
       const response = await fetch("/api/vidu/generate", {
@@ -211,7 +219,7 @@ export default function VideoGeneratorUI() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           image_base64: processed.base64,
-          prompt: prompt.trim(),
+          prompt: prompt.trim(), // ⬅️ Enviamos el prompt original
           user_id: userId,
         }),
       });
@@ -222,18 +230,21 @@ export default function VideoGeneratorUI() {
         throw new Error(data.error || "Error al generar video");
       }
 
+      // 🔑 CAPTURAR EL PROMPT REFINADO DEL API
+      const finalPrompt = data.refined_prompt || prompt.trim();
+
       // Crear placeholder para el nuevo video
       const newVideo: VideoGeneration = {
-        id: data.videoId,
-        user_id: userId,
-        prompt: prompt.trim(),
+        id: data.generation_id, // Usar generation_id
+        user_id: userId!,
+        prompt: finalPrompt, // ⬅️ USAR EL PROMPT REFINADO
         input_image_url: preview || "",
         input_image_path: null,
         model: "viduq1",
         duration: 5,
         aspect_ratio: "1:1",
         resolution: "1080p",
-        vidu_task_id: data.taskId,
+        vidu_task_id: data.vidu_task_id,
         vidu_creation_id: null,
         status: "pending",
         credits_used: 1,
@@ -252,7 +263,7 @@ export default function VideoGeneratorUI() {
         completed_at: null,
       };
 
-      // Actualizar la lista de videos y seleccionar el nuevo
+      // ... (Resto de la lógica de actualización de estados)
       setVideos((prev) => [newVideo, ...prev]);
       setSelectedVideo(newVideo);
 
@@ -285,163 +296,26 @@ export default function VideoGeneratorUI() {
   return (
     <div className="min-h-screen bg-zinc-900 text-white">
       {/* Video móvil fixed top */}
-      <div
-        className="lg:hidden bg-zinc-800 w-full fixed top-16 left-0 z-20 shadow-2xl"
-        style={{ height: "33.33vh" }}
-      >
-        {selectedVideo?.video_url ? (
-          <video
-            loop
-            controls
-            poster={selectedVideo.cover_url || undefined}
-            className="w-full h-full"
-          >
-            <source
-              src={selectedVideo.video_url || undefined}
-              type="video/mp4"
-            />
-          </video>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-zinc-500">
-            No hay video seleccionado
-          </div>
-        )}
-      </div>
+      <VideoPlayerMobile selectedVideo={selectedVideo} />
 
       {/* Contenedor principal */}
       <div className="max-w-7xl mx-auto p-4 pt-[calc(33.33vh+4rem)] lg:p-8 lg:pt-24 grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Columna izquierda: Controles */}
-        <div className="lg:col-span-1 space-y-6">
-          <h1 className="text-3xl font-extrabold text-emerald-500">
-            Imagen a Video
-          </h1>
-
-          {/* Mensaje de error */}
-          {error && (
-            <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-red-200 text-sm">{error}</p>
-            </div>
-          )}
-
-          {/* Dropzone */}
-          <div
-            {...getRootProps()}
-            className={`bg-zinc-800 p-6 rounded-lg border-2 ${
-              isDragActive
-                ? "border-emerald-500 bg-zinc-700/50"
-                : "border-pink-500/80"
-            } shadow-lg hover:border-pink-50 transition-all cursor-pointer h-64 flex flex-col justify-center items-center relative overflow-hidden`}
-          >
-            <input {...getInputProps()} />
-            {preview ? (
-              <>
-                <img
-                  src={preview}
-                  alt="Preview"
-                  className="absolute inset-0 w-full h-full object-cover opacity-30"
-                />
-                <div className="relative z-10 bg-zinc-900/80 p-4 rounded-lg">
-                  <ImageIcon className="h-10 w-10 text-emerald-400 mb-3 mx-auto" />
-                  <p className="text-lg font-semibold text-emerald-100">
-                    Imagen seleccionada
-                  </p>
-                  <p className="text-sm text-zinc-400 mt-1">
-                    Click para cambiar
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <Upload
-                  className={`h-10 w-10 mb-3 ${
-                    isDragActive ? "text-emerald-400" : "text-pink-400"
-                  }`}
-                />
-                <p className="text-xl font-semibold text-pink-100">
-                  {isDragActive
-                    ? "Suelta la imagen aquí"
-                    : "Click o arrastra tu foto"}
-                </p>
-                <p className="text-sm text-zinc-400 mt-1">
-                  (PNG, JPG o WebP - Máx 20MB)
-                </p>
-              </>
-            )}
-          </div>
-
-          {/* Textarea prompt */}
-          <div className="bg-zinc-800 p-4 rounded-lg border border-zinc-600">
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-pink-100 mb-2"
-            >
-              Descripción del video (Prompt)
-            </label>
-            <textarea
-              id="description"
-              rows={5}
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="w-full bg-zinc-900 border border-zinc-700 text-white p-3 rounded-lg focus:border-emerald-500 focus:ring-emerald-500 resize-none placeholder-zinc-500"
-              placeholder="Ej: Una mujer paseando por un jardín japonés al atardecer..."
-            />
-          </div>
-
-          {/* Botón generar */}
-          <button
-            onClick={handleGenerateClick}
-            disabled={
-              isGenerating || credits === 0 || !selectedFile || !prompt.trim()
-            }
-            className={`w-full py-4 rounded-lg font-bold text-2xl shadow-xl transition-all flex items-center justify-center space-x-2 ${
-              isGenerating || credits === 0
-                ? "bg-pink-700 cursor-not-allowed opacity-75"
-                : "bg-pink-500 hover:bg-pink-400 shadow-pink-500/50"
-            }`}
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="h-6 w-6 animate-spin" />
-                <span>Generando...</span>
-              </>
-            ) : (
-              <span>Generar</span>
-            )}
-          </button>
-
-          {/* Metadata */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-zinc-400 px-1">
-            <p>
-              Modelo: <span className="text-pink-300">Vidu 1.5</span>
-            </p>
-            <p>
-              Resolución: <span className="text-pink-300">1080p</span>
-            </p>
-            <p>
-              Duración: <span className="text-pink-300">5s</span>
-            </p>
-            <p>
-              Costo: <span className="text-pink-300">1 crédito</span>
-            </p>
-          </div>
-
-          {/* Créditos */}
-          <div className="bg-zinc-800 p-4 rounded-lg flex flex-col space-y-3">
-            <div className="flex justify-between items-center text-lg font-semibold">
-              <span className="text-emerald-500">Créditos:</span>
-              <span className="text-3xl font-extrabold text-emerald-300">
-                {credits}
-              </span>
-            </div>
-            <Link
-              href="/paquetes"
-              className="w-full py-3 rounded-lg font-bold text-lg bg-emerald-500 hover:bg-emerald-400 transition-colors shadow-lg shadow-emerald-500/50 flex items-center justify-center space-x-2"
-            >
-              <DollarSign className="h-5 w-5" />
-              <span>Obtener más créditos</span>
-            </Link>
-          </div>
+        <div className="lg:col-span-1">
+          <VideoGeneratorForm
+            isGenerating={isGenerating}
+            credits={credits}
+            error={error}
+            selectedFile={selectedFile}
+            preview={preview}
+            prompt={prompt}
+            onPromptChange={setPrompt}
+            onImageChange={(file, previewUrl) => {
+              setSelectedFile(file);
+              setPreview(previewUrl);
+            }}
+            onGenerate={handleGenerateClick}
+          />
         </div>
 
         {/* Columna derecha */}
@@ -492,26 +366,7 @@ export default function VideoGeneratorUI() {
           )}
 
           {/* Video player desktop */}
-          <div className="hidden lg:block bg-zinc-800 rounded-lg shadow-2xl overflow-hidden aspect-video relative border-2 border-emerald-500">
-            {selectedVideo?.video_url ? (
-              <video
-                controls
-                loop
-                preload="metadata"
-                poster={selectedVideo.cover_url || undefined}
-                className="w-full h-full"
-              >
-                <source
-                  src={selectedVideo.video_url || undefined}
-                  type="video/mp4"
-                />
-              </video>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-zinc-500">
-                No hay video seleccionado
-              </div>
-            )}
-          </div>
+          <VideoPlayerMain selectedVideo={selectedVideo} />
 
           {/* Slider de videos */}
           <VideoList

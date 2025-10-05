@@ -1,5 +1,13 @@
 import React from "react";
-import { Video } from "@/types/database.types";
+// TODO: Replace with the correct import if 'Video' exists elsewhere
+// import { Video } from "@/types/database.types";
+
+// Temporary Video type definition (replace with actual type as needed)
+interface Video {
+  url?: string;
+  video_url?: string;
+  // add other properties as needed
+}
 import { ArrowDownToLine, Share2 } from "lucide-react";
 
 interface VideoPreviewProps {

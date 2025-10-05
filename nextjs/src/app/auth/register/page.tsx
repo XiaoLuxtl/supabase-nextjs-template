@@ -1,12 +1,32 @@
 "use client";
 
 import { createSPASassClient } from "@/lib/supabase/client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import SSOButtons from "@/components/SSOButtons";
 
 export default function RegisterPage() {
+  // (ya declarado arriba)
+  // Redirigir si ya está logeado
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const supabase = await createSPASassClient();
+        const {
+          data: { user },
+        } = await supabase.getSupabaseClient().auth.getUser();
+        if (user) {
+          router.replace("/app");
+        }
+      } catch (e) {
+        // Ignorar error, dejar en página de registro
+      }
+    };
+    checkSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");

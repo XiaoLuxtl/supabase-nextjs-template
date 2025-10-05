@@ -1,14 +1,34 @@
+
 import { useEffect, useState } from 'react';
 import { createSPAClient } from '@/lib/supabase/client';
 import type { CreditPackage } from '@/types/database.types';
 
+
 export function usePackages() {
-  const [packages, setPackages] = useState<CreditPackage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [packages, setPackages] = useState<CreditPackage[]>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('credit_packages');
+      if (cached) {
+        try {
+          return JSON.parse(cached);
+        } catch {
+          return [];
+        }
+      }
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(() => packages.length === 0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Si ya hay paquetes cacheados, no mostrar loading
+    if (packages.length > 0) {
+      setLoading(false);
+      return;
+    }
     loadPackages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadPackages() {
@@ -23,6 +43,9 @@ export function usePackages() {
       if (fetchError) throw fetchError;
 
       setPackages(data || []);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('credit_packages', JSON.stringify(data || []));
+      }
       setError(null);
     } catch (err) {
       console.error('Error loading packages:', err);

@@ -1,5 +1,10 @@
+// src/app/api/vidu/generate/route.ts
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { refineViduPrompt } from '@/lib/prompt-refiner'; // ⬅️ Importar el refinador
+import { describeImage } from '@/lib/ai-vision'; // ⬅️ Importar el analista de imágenes (nuevo)
+
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,15 +13,15 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { image_base64, prompt, user_id } = body;
+        const body = await request.json();
+        const { image_base64, prompt: userPrompt, user_id } = body; 
 
     console.log('=== VIDU GENERATE REQUEST ===');
     console.log('User ID:', user_id);
-    console.log('Prompt length:', prompt?.length);
+    console.log('Prompt length:', userPrompt?.length);
     console.log('Image base64 length:', image_base64?.length);
 
-    if (!image_base64 || !prompt || !user_id) {
+    if (!image_base64 || !userPrompt || !user_id) {
       console.error('Missing required fields');
       return NextResponse.json(
         { error: 'image_base64, prompt y user_id son requeridos' },
@@ -46,31 +51,41 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Crear registro de generación pendiente (SIN consumir crédito aún)
-    console.log('Creating generation record...');
+    // 🔑 PASO DE IA 1: Análisis de Imagen con GPT-4o Vision
+    console.log('Analyzing image with GPT-4o Vision...');
+    const imageDescription = await describeImage(image_base64);
+    console.log('Image Description:', imageDescription);
+
+    // 🔑 PASO DE IA 2: Refinamiento de Prompt con GPT-4o
+    console.log('Refining prompt with GPT-4o...');
+    const refinedPrompt = await refineViduPrompt(userPrompt, imageDescription);
+    console.log('Refined Prompt:', refinedPrompt);
+
+    // 2. Crear registro de generación pendiente (Guardamos el prompt original)
+    console.log('Creating generation record with ORIGINAL prompt...');
     const { data: generation, error: genError } = await supabase
-      .from('video_generations')
-      .insert({
-        user_id,
-        prompt,
-        input_image_url: '',
-        status: 'pending',
-        model: 'viduq1',
-        duration: 5,
-        aspect_ratio: '16:9',
-        resolution: '1080p',
-        credits_used: 0 // AÚN NO SE CONSUMIERON
-      })
-      .select()
-      .single();
+        .from('video_generations')
+        .insert({
+            user_id,
+            prompt: userPrompt, // ⬅️ GUARDAR PROMPT ORIGINAL DEL USUARIO
+            input_image_url: '',
+            status: 'pending',
+            model: 'viduq1',
+            duration: 5,
+            aspect_ratio: '16:9',
+            resolution: '1080p',
+            credits_used: 0
+        })
+        .select()
+        .single();
 
     if (genError) {
       console.error('Error creating generation:', genError);
       return NextResponse.json({ error: 'Error al crear generación' }, { status: 500 });
     }
 
-    // 3. Llamar a Vidu API PRIMERO (antes de consumir crédito)
-    console.log('Calling Vidu API...');
+    // 3. Llamar a Vidu API PRIMERO (antes de consumir crédito) (Usamos el prompt refinado)
+    console.log('Calling Vidu API with REFINED prompt...');
     console.log('Vidu URL:', process.env.VIDU_API_URL);
     console.log('API Key present:', !!process.env.VIDU_API_KEY);
     console.log('Callback URL:', `${process.env.NEXT_PUBLIC_APP_URL}/api/vidu/webhook`);
@@ -78,7 +93,7 @@ export async function POST(request: NextRequest) {
     const viduPayload = {
       model: 'viduq1',
       images: [`data:image/jpeg;base64,${image_base64}`],
-      prompt: prompt,
+      prompt: refinedPrompt,
       duration: 5,
       resolution: '1080p',
       callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/vidu/webhook`
@@ -167,15 +182,16 @@ export async function POST(request: NextRequest) {
 
     // 5. Actualizar generación con task_id de Vidu
     const { error: updateError } = await supabase
-      .from('video_generations')
-      .update({
-        vidu_task_id: taskId,
-        status: 'processing',
-        started_at: new Date().toISOString(),
-        vidu_full_response: viduData,
-        credits_used: 1
-      })
-      .eq('id', generation.id);
+        .from('video_generations')
+        .update({
+            vidu_task_id: taskId,
+            status: 'processing',
+            started_at: new Date().toISOString(),
+            vidu_full_response: viduData,
+            credits_used: 1,
+            translated_prompt_en: refinedPrompt, // ⬅️ GUARDAR PROMPT REFINADO
+        })
+        .eq('id', generation.id);
 
     if (updateError) {
       console.error('Error updating generation with task_id:', updateError);

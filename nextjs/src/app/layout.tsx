@@ -5,8 +5,44 @@ import CookieConsent from "@/components/Cookies";
 import { GoogleAnalytics } from "@next/third-parties/google";
 
 export const metadata: Metadata = {
-  title: process.env.NEXT_PUBLIC_PRODUCTNAME,
-  description: "The best way to build your SaaS product.",
+  title: {
+    default: "PixelPages",
+    template: "%s | PixelPages",
+  },
+  description:
+    "Convierte imágenes en videos animados con música y frases personalizadas. Servicio rápido, económico y 100% online.",
+  keywords: [
+    "convertir imagen a video",
+    "crear video con fotos",
+    "foto a video online",
+    "video con música y fotos",
+    "animación de fotos",
+    "PixelPages",
+  ],
+  openGraph: {
+    title: "Convierte tus fotos en videos animados 🎞️",
+    description:
+      "Crea recuerdos únicos: transforma tus imágenes en videos con música y frases personalizadas.",
+    url: "https://fotosavideo.pixelpages.com.mx",
+    siteName: "PixelPages",
+    images: [
+      {
+        url: "https://fotosavideo.pixelpages.com.mx/og-image.jpg",
+        width: 1200,
+        height: 630,
+        alt: "Ejemplo de imagen convertida en video",
+      },
+    ],
+    locale: "es_MX",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Convierte tus fotos en videos con música 🎶",
+    description:
+      "Haz de tus recuerdos algo único: convierte fotos en videos animados con música y frases personalizadas.",
+    images: ["https://fotosavideo.pixelpages.com.mx/og-image.jpg"],
+  },
 };
 
 export default function RootLayout({
