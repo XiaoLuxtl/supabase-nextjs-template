@@ -3,14 +3,22 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import CookieConsent from "@/components/Cookies";
 import { GoogleAnalytics } from "@next/third-parties/google";
+import { GlobalProvider } from "@/lib/context/GlobalContext";
 
 export const metadata: Metadata = {
   title: {
-    default: "PixelPages",
+    default: "Convertir Fotos a Video | PixelPages",
     template: "%s | PixelPages",
   },
   description:
     "Convierte imágenes en videos animados con música y frases personalizadas. Servicio rápido, económico y 100% online.",
+
+  icons: {
+    icon: "/favicon.svg", // Favicon principal (SVG recomendado)
+    apple: "/apple-touch-icon.png", // Icono para dispositivos Apple
+    shortcut: "/favicon.ico", // Icono de respaldo si lo tienes
+  },
+
   keywords: [
     "convertir imagen a video",
     "crear video con fotos",
@@ -27,7 +35,7 @@ export const metadata: Metadata = {
     siteName: "PixelPages",
     images: [
       {
-        url: "https://fotosavideo.pixelpages.com.mx/og-image.jpg",
+        url: "https://fotosavideo.pixelpages.com.mx/og-image.png",
         width: 1200,
         height: 630,
         alt: "Ejemplo de imagen convertida en video",
@@ -41,7 +49,7 @@ export const metadata: Metadata = {
     title: "Convierte tus fotos en videos con música 🎶",
     description:
       "Haz de tus recuerdos algo único: convierte fotos en videos animados con música y frases personalizadas.",
-    images: ["https://fotosavideo.pixelpages.com.mx/og-image.jpg"],
+    images: ["https://fotosavideo.pixelpages.com.mx/og-image.png"],
   },
 };
 
@@ -58,7 +66,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={theme}>
-        {children}
+        <GlobalProvider>{children}</GlobalProvider>
         <Analytics />
         <CookieConsent />
         {gaID && <GoogleAnalytics gaId={gaID} />}

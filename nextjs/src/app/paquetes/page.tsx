@@ -1,9 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation"; // Usamos usePathname para saber qué link está activo
 import { useEffect, useState } from "react";
 import { createSPAClient } from "@/lib/supabase/client";
 import { Sparkles } from "lucide-react";
 import HomePricing from "@/components/HomePricing";
+import { ArrowLeft } from "lucide-react";
+
 import type { UserProfile } from "@/types/database.types";
 
 export default function PaquetesPage() {
@@ -37,11 +40,21 @@ export default function PaquetesPage() {
     }
   }
 
+  const router = useRouter();
+
   return (
     <div className="min-h-screen bg-zinc-900 text-white">
       {/* Header con créditos del usuario */}
       <section className="relative pt-24 pb-8 overflow-hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <button
+            onClick={() => router.back()}
+            // Adaptamos el botón "Volver" a la paleta emerald
+            className="p-5 inline-flex items-center text-sm text-emerald-600 font-medium hover:text-emerald-800 transition-colors mb-6"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Volver a la aplicación
+          </button>
           <div className="text-center">
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white mb-4">
               Obtener más{" "}

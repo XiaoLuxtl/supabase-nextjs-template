@@ -15,13 +15,16 @@ import { createSPAClient } from "@/lib/supabase/client";
 
 export default function SuccessPage() {
   const searchParams = useSearchParams();
-  const [loading, setLoading] = useState(true);
+
+  // ✅ Eliminamos 'loading' y usamos solo 'processing', inicializado en true
   const [processing, setProcessing] = useState(true);
+
   const { user, refreshUserProfile } = useGlobal();
   const [error, setError] = useState<string | null>(null);
   const supabase = createSPAClient();
 
   useEffect(() => {
+    // Llama a la función de procesamiento al montar el componente
     processPayment();
   }, []);
 
@@ -30,22 +33,18 @@ export default function SuccessPage() {
     const externalReference = searchParams.get("external_reference");
     const status = searchParams.get("status");
 
-    // Si no hay payment_id, solo cargar créditos (ya se procesó antes)
-    if (!paymentId || !externalReference) {
-      setProcessing(false);
-      await refreshUserProfile();
-      return;
-    }
+    let apiCallAttempted = false;
 
-    // Si el status no es approved, no procesar
-    if (status !== "approved") {
+    // Si el pago no está aprobado o faltan referencias, solo refrescamos y terminamos.
+    if (!paymentId || !externalReference || status !== "approved") {
       setProcessing(false);
       await refreshUserProfile();
       return;
     }
 
     try {
-      // Llamar al endpoint que procesa el pago
+      apiCallAttempted = true;
+
       const response = await fetch("/api/payments/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -58,10 +57,8 @@ export default function SuccessPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        // Si es retryable, esperar un poco y reintentar
         if (data.retryable) {
           await new Promise((resolve) => setTimeout(resolve, 3000));
-          // Recargar la página para reintentar
           window.location.reload();
           return;
         }
@@ -75,26 +72,32 @@ export default function SuccessPage() {
       }
     } catch (err: any) {
       console.error("Error processing payment:", err);
-      setError(err.message);
+      if (apiCallAttempted) {
+        setError(err.message);
+      }
     }
 
+    // ✅ FIN DEL PROCESAMIENTO: Siempre se ejecuta
     setProcessing(false);
     await refreshUserProfile();
   }
 
-  if (processing || loading) {
+  // Muestra la pantalla de carga SÓLO si 'processing' es true
+  if (processing) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center px-4">
         <div className="text-center">
           <Loader2 className="w-16 h-16 text-pink-500 animate-spin mx-auto mb-4" />
           <p className="text-white text-lg">Procesando tu pago...</p>
           <p className="text-zinc-400 text-sm mt-2">
-            Esto solo tomará unos segundos
+            Esto solo tomará unos segundos.
           </p>
         </div>
       </div>
     );
   }
+
+  // --- El resto del código de manejo de errores y éxito es correcto ---
 
   if (error) {
     return (
@@ -140,7 +143,7 @@ export default function SuccessPage() {
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">¡Pago Exitoso!</h1>
           <p className="text-zinc-400 text-lg">
-            Tus créditos han sido acreditados
+            Tus créditos han sido añadidos a tu cuenta.
           </p>
         </div>
 

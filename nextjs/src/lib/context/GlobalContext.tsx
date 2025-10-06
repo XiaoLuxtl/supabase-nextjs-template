@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { createSPASassClientAuthenticated as createSPASassClient } from "@/lib/supabase/client";
+import { createSPASassClient } from "@/lib/supabase/client";
 
 type User = {
   email: string;

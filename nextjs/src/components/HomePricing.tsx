@@ -1,8 +1,10 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Check, Plus, Minus, Loader2 } from "lucide-react";
 import { usePackages } from "@/hooks/usePackages";
+import { useGlobal } from "@/lib/context/GlobalContext";
 import { createSPAClient } from "@/lib/supabase/client";
 import type { CreditPackage } from "@/types/database.types";
 import {
@@ -13,17 +15,35 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-// Componente para el card dinámico de créditos
+// Definición de tipos para el usuario (para DynamicCreditCard)
+type User = {
+  email: string;
+  id: string;
+  registered_at: Date;
+  credits_balance: number;
+};
+
+// ====================================================================
+// Componente para el card dinámico de créditos (Corregido)
+// ====================================================================
+
+interface DynamicCreditCardProps {
+  package: CreditPackage;
+  onPurchase: (pkg: CreditPackage, credits: number) => void;
+  currentUser: User | null; // ✅ Nuevo: Estado de usuario
+  isGlobalLoading: boolean; // ✅ Nuevo: Estado de carga global
+}
+
 const DynamicCreditCard = ({
   package: pkg,
   onPurchase,
-}: {
-  package: CreditPackage;
-  onPurchase: (pkg: CreditPackage, credits: number) => void;
-}) => {
-  const [credits, setCredits] = useState(pkg.min_credits || 15);
+  currentUser,
+  isGlobalLoading,
+}: DynamicCreditCardProps) => {
+  const [credits, setCredits] = useState(() => pkg.min_credits || 15);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const totalPrice = credits * (pkg.price_per_credit || 30);
+  const router = useRouter(); // Necesario para la redirección
 
   const handleCreditsChange = (amount: number) => {
     setCredits((prevCredits) =>
@@ -31,6 +51,22 @@ const DynamicCreditCard = ({
     );
   };
 
+  const handleButtonClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    if (isGlobalLoading) return;
+
+    if (!currentUser) {
+      router.push("/auth/login"); // Redirige si no está autenticado
+      return;
+    }
+
+    // Si está autenticado, procede con la compra
+    setIsPurchasing(true);
+    onPurchase(pkg, credits);
+  };
+
+  // Usamos 'button' en lugar de 'Link' para manejar la lógica onClick de forma condicional
   return (
     <Card className="relative flex flex-col border-2 border-dashed border-gray-400 bg-gray-50">
       <CardHeader>
@@ -86,16 +122,19 @@ const DynamicCreditCard = ({
             ))}
         </ul>
 
-        <Link
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            setIsPurchasing(true);
-            onPurchase(pkg, credits);
-          }}
+        <button
+          onClick={handleButtonClick}
+          disabled={isPurchasing || isGlobalLoading}
           className="w-full text-center px-6 py-3 rounded-lg font-medium transition-colors bg-gray-50 hover:bg-gray-100 text-gray-900 flex items-center justify-center gap-2"
         >
-          {isPurchasing ? (
+          {isGlobalLoading ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Cargando...
+            </>
+          ) : !currentUser ? (
+            "Iniciar Sesión / Registrarse"
+          ) : isPurchasing ? (
             <>
               <Loader2 className="w-5 h-5 animate-spin" />
               Procesando...
@@ -103,31 +142,37 @@ const DynamicCreditCard = ({
           ) : (
             `Comprar ${credits} Créditos`
           )}
-        </Link>
+        </button>
       </CardContent>
     </Card>
   );
 };
 
+// ====================================================================
+// Componente HomePricing (Corregido)
+// ====================================================================
+
 const HomePricing = () => {
   const { fixedPackages, customPackage, loading, error } = usePackages();
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  // ✅ Renombrando 'loading' del contexto a 'globalLoading' para evitar conflicto.
+  const { user, loading: globalLoading } = useGlobal();
+  const router = useRouter();
   const supabase = createSPAClient();
 
+  // ✅ Eliminamos la verificación de usuario AQUÍ
   async function handlePurchase(pkg: CreditPackage, customCredits?: number) {
     setPurchasing(pkg.id);
 
-    try {
-      // Verificar autenticación
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    // Si no hay usuario, salimos de la función inmediatamente.
+    // La redirección ya se maneja en el onClick del botón.
+    if (!user) {
+      setPurchasing(null);
+      return;
+    }
 
-      if (!user) {
-        alert("Debes iniciar sesión para comprar");
-        window.location.href = "/auth/login";
-        return;
-      }
+    try {
+      // Ya sabemos que 'user' existe si llegamos aquí.
 
       // Crear preferencia de pago
       const response = await fetch("/api/payments/create-preference", {
@@ -146,9 +191,9 @@ const HomePricing = () => {
         throw new Error(data.error || "Error al crear preferencia");
       }
 
-      // Redirigir a Mercado Pago (sandbox en TEST)
+      // Redirigir a Mercado Pago
       const checkoutUrl = data.sandbox_init_point || data.init_point;
-      window.location.href = checkoutUrl;
+      router.push(checkoutUrl);
     } catch (error) {
       console.error("Error:", error);
       alert("Error al procesar el pago. Intenta nuevamente.");
@@ -156,11 +201,34 @@ const HomePricing = () => {
     }
   }
 
-  // Features comunes (los únicos que quedan en env por ahora)
-  const commonFeatures =
-    process.env.NEXT_PUBLIC_COMMON_FEATURES?.split(",").map((f) => f.trim()) ||
-    [];
+  // Features comunes (lógica sin cambios)
+  const [commonFeatures, setCommonFeatures] = useState<string[]>([]);
 
+  useEffect(() => {
+    setCommonFeatures(
+      process.env.NEXT_PUBLIC_COMMON_FEATURES?.split(",").map((f) =>
+        f.trim()
+      ) || []
+    );
+  }, []);
+
+  // ----------------------------------------------------------------------
+  // ✅ 1. SOLUCIÓN AL ERROR DE HYDRATION: Esperar a que el Contexto Global cargue
+  if (globalLoading) {
+    return (
+      <section id="pricing" className="py-24 bg-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-center min-h-[400px]">
+            <Loader2 className="h-12 w-12 animate-spin text-gray-400" />
+            <p className="ml-4 text-gray-500">Cargando sesión...</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+  // ----------------------------------------------------------------------
+
+  // 2. Carga de paquetes (continúa con la lógica existente)
   if (loading) {
     return (
       <section id="pricing" className="py-24 bg-gray-100">
@@ -247,15 +315,29 @@ const HomePricing = () => {
                 </ul>
 
                 <button
-                  onClick={() => handlePurchase(pkg)}
-                  disabled={purchasing === pkg.id}
+                  // ✅ NUEVO: Lógica condicional para manejar autenticación y compra
+                  onClick={() => {
+                    if (!user) {
+                      router.push("/auth/login"); // Redirige inmediatamente si no hay usuario
+                    } else {
+                      handlePurchase(pkg); // Procede si hay usuario
+                    }
+                  }}
+                  disabled={purchasing === pkg.id || globalLoading}
                   className={`w-full text-center px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
                     pkg.is_popular
                       ? "bg-primary-600 text-white hover:bg-primary-700"
                       : "bg-gray-50 text-gray-900 hover:bg-gray-100"
                   }`}
                 >
-                  {purchasing === pkg.id ? (
+                  {globalLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Cargando...
+                    </>
+                  ) : !user ? (
+                    "Iniciar Sesión / Registrarse"
+                  ) : purchasing === pkg.id ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
                       Procesando...
@@ -273,6 +355,8 @@ const HomePricing = () => {
             <DynamicCreditCard
               package={customPackage}
               onPurchase={handlePurchase}
+              currentUser={user} // ✅ Pasamos el estado de usuario
+              isGlobalLoading={globalLoading} // ✅ Pasamos el estado de carga
             />
           )}
         </div>
