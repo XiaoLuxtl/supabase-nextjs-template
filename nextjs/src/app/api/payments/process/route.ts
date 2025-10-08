@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     
     try {
       payment = await paymentClient.get({ id: payment_id });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to get payment from MP:', error);
       
       // FALLBACK PARA TEST: Si estamos en desarrollo o con credenciales de prueba

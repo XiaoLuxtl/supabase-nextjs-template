@@ -21,6 +21,7 @@ export default function RegisterPage() {
           router.replace("/app");
         }
       } catch (e) {
+        console.error("Error checking session:", e);
         // Ignorar error, dejar en página de registro
       }
     };

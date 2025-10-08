@@ -1,5 +1,6 @@
-// src/app/api/auth/callback/route.ts
 import { NextResponse } from 'next/server'
+// Asumo que createSSRSassClient devuelve una instancia de SassClient,
+// y que está definido en "@/lib/supabase/server".
 import { createSSRSassClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
@@ -7,11 +8,19 @@ export async function GET(request: Request) {
     const code = requestUrl.searchParams.get('code')
 
     if (code) {
+        // 'supabase' es el SassClient (wrapper)
         const supabase = await createSSRSassClient()
+        // 'client' es el SupabaseClient real
         const client = supabase.getSupabaseClient()
 
-        // Exchange the code for a session
-        await supabase.exchangeCodeForSession(code)
+        // Corregido: La función debe llamarse en el objeto 'auth' del cliente Supabase real ('client').
+        // La implementación moderna de @supabase/ssr usa este patrón para el intercambio de código.
+        const { error: sessionError } = await client.auth.exchangeCodeForSession(code)
+        
+        if (sessionError) {
+            console.error('Error exchanging code for session:', sessionError)
+            return NextResponse.redirect(new URL('/auth/login', request.url))
+        }
 
         // Check MFA status
         const { data: aal, error: aalError } = await client.auth.mfa.getAuthenticatorAssuranceLevel()

@@ -1,3 +1,5 @@
+// src/components/MFASetup.tsx
+
 import React, { useState, useEffect } from "react";
 import { createSPASassClient } from "@/lib/supabase/client";
 import {
@@ -10,11 +12,15 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Key, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { Factor } from "@supabase/auth-js";
-import { MFAEnrollTOTPParams } from "@supabase/auth-js/src/lib/internal-types";
 
 interface MFASetupProps {
   onStatusChange?: () => void;
 }
+
+type MFAEnrollTOTPParams = {
+  factorType: "totp";
+  friendlyName?: string;
+};
 
 export function MFASetup({ onStatusChange }: MFASetupProps) {
   const [factors, setFactors] = useState<Factor[]>([]);
@@ -36,7 +42,7 @@ export function MFASetup({ onStatusChange }: MFASetupProps) {
 
       if (error) throw error;
 
-      setFactors(data.all || []);
+      setFactors(data?.all ? data.all : []);
       setLoading(false);
     } catch (err) {
       console.error("Error fetching MFA factors:", err);

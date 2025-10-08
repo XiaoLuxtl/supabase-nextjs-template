@@ -1,11 +1,9 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Plus, Minus, Loader2 } from "lucide-react";
 import { usePackages } from "@/hooks/usePackages";
 import { useGlobal } from "@/lib/context/GlobalContext";
-import { createSPAClient } from "@/lib/supabase/client";
 import type { CreditPackage } from "@/types/database.types";
 import {
   Card,
@@ -158,7 +156,6 @@ const HomePricing = () => {
   // ✅ Renombrando 'loading' del contexto a 'globalLoading' para evitar conflicto.
   const { user, loading: globalLoading } = useGlobal();
   const router = useRouter();
-  const supabase = createSPAClient();
 
   // ✅ Eliminamos la verificación de usuario AQUÍ
   async function handlePurchase(pkg: CreditPackage, customCredits?: number) {

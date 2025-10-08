@@ -81,6 +81,7 @@ export interface VideoGeneration {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  preview_url?: string | null;
 }
 
 export interface CreditTransaction {
@@ -98,7 +99,7 @@ export interface CreditTransaction {
 export interface ViduWebhookLog {
   id: string;
   vidu_task_id: string | null;
-  payload: any;
+  payload: unknown; // Replaces `any` for safer typing
   processed: boolean;
   error_message: string | null;
   received_at: string;
@@ -157,7 +158,7 @@ export interface CreatePurchaseRequest {
 // TIPOS DE RESPONSE DE LA API
 // ============================================
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
   error?: string;

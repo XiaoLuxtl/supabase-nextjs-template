@@ -1,38 +1,37 @@
 // src/lib/supabase/server.ts
 
-import {createServerClient} from '@supabase/ssr'
-import {cookies} from 'next/headers'
-import {ClientType, SassClient} from "@/lib/supabase/unified";
-import {Database} from "@/lib/types";
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import { ClientType, SassClient, GenericSupabaseClient } from "@/lib/supabase/unified";
+import { Database } from "@/lib/types";
 
-export async function createSSRClient() {
-    const cookieStore = await cookies()
+export async function createSSRClient(): Promise<GenericSupabaseClient> {
+    const cookieStore = await cookies();
 
-    return createServerClient<Database>(
+    return createServerClient<Database, 'public'>(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
             cookies: {
                 getAll() {
-                    return cookieStore.getAll()
+                    return cookieStore.getAll();
                 },
                 setAll(cookiesToSet) {
                     try {
                         cookiesToSet.forEach(({ name, value, options }) =>
                             cookieStore.set(name, value, options)
-                        )
+                        );
                     } catch {
-                        // The `setAll` method was called from a Server Component.
-                        // This can be ignored if you have middleware refreshing
-                        // user sessions.
+                        // Ignorar errores si setAll se llama desde un Server Component
                     }
                 },
-            }
+            },
+            db: {
+                schema: 'public',
+            },
         }
-    )
+    ) as unknown as GenericSupabaseClient;
 }
-
-
 
 export async function createSSRSassClient() {
     const client = await createSSRClient();

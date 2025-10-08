@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/next";
 import CookieConsent from "@/components/Cookies";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { GlobalProvider } from "@/lib/context/GlobalContext";
+import "@/lib/utils/logger"; // ✅ IMPORTACIÓN CLAVE: Asegura que se ejecute al inicio
 
 export const metadata: Metadata = {
   title: {

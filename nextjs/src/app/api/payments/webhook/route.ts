@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { createClient } from '@supabase/supabase-js';
 
+interface ApiError extends Error {
+  status?: number;
+  code?: string; // Optional, if the API includes error codes
+}
+
 const client = new MercadoPagoConfig({ 
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN!
 });
@@ -13,15 +18,17 @@ const supabase = createClient(
   process.env.PRIVATE_SUPABASE_SERVICE_KEY!
 );
 
-// Helper para esperar
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// Utility function for sleep
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Procesar el pago de forma asíncrona
 async function processPaymentAsync(paymentId: string) {
   const maxRetries = 10;
   let payment;
 
-  // Intentar obtener el pago con reintentos
+    // Intentar obtener el pago con reintentos
   for (let i = 0; i < maxRetries; i++) {
     try {
       if (i > 0) {
@@ -32,11 +39,13 @@ async function processPaymentAsync(paymentId: string) {
       payment = await paymentClient.get({ id: paymentId });
       console.log(`[Async] Payment ${paymentId} found on attempt ${i + 1}`);
       break;
-    } catch (error: any) {
-      if (error.status === 404 && i < maxRetries - 1) {
+    } catch (error) {
+      const apiError = error as ApiError;
+      if (apiError.status === 404 && i < maxRetries - 1) {
         continue;
       }
-      console.error(`[Async] Failed to get payment ${paymentId}:`, error);
+
+      console.error(`[Async] Failed to get payment ${paymentId}:`, apiError);
       return;
     }
   }

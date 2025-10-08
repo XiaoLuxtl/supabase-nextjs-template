@@ -17,7 +17,7 @@ import { useGlobal } from "@/lib/context/GlobalContext";
 import { createSPASassClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({ children }: React.PropsWithChildren) {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isUserDropdownOpen, setUserDropdownOpen] = useState(false);
@@ -27,8 +27,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const handleLogout = async () => {
     try {
-      const client = await createSPASassClient();
-      await client.logout();
+      const clientWrapper = createSPASassClient();
+      // CORRECCIÓN: La función 'logout' no existe en el wrapper (SassClient).
+      // Se debe acceder al cliente Supabase real usando getSupabaseClient()
+      // y llamar a 'auth.signOut()'.
+      await clientWrapper.getSupabaseClient().auth.signOut();
+
+      // Redirigir al usuario al inicio de sesión después de cerrar sesión
+      router.push("/auth/login");
     } catch (error) {
       console.error("Error logging out:", error);
     }
@@ -56,9 +62,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     },
   ];
 
-  const toggleSidebar = () => setSidebarOpen(!isSidebarOpen);
+  const toggleSidebar = () => setSidebarOpen(!isSidebarOpen); // Cerrar el menú de usuario al hacer clic fuera
 
-  // Cerrar el menú de usuario al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (isUserDropdownOpen) {
@@ -77,12 +82,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-100">
       {/* Overlay para móvil */}
       {isSidebarOpen && (
-        <div
+        <button
           className="fixed inset-0 bg-gray-600 bg-opacity-75 z-40 lg:hidden"
           onClick={toggleSidebar}
         />
       )}
-
       {/* Barra superior móvil */}
       <header className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm z-50 lg:hidden">
         <div className="flex items-center justify-between h-full px-4">
@@ -97,7 +101,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               {productName}
             </span>
           </div>
-
           <div data-dropdown="user-menu" className="relative">
             <button
               onClick={() => setUserDropdownOpen(!isUserDropdownOpen)}
@@ -110,7 +113,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
               <ChevronDown className="h-4 w-4" />
             </button>
-
             {/* Menú desplegable de usuario */}
             {isUserDropdownOpen && (
               <div className="absolute right-0 mt-2 w-64 bg-white/80 backdrop-blur-md rounded-lg shadow-lg border border-white/50">
@@ -147,7 +149,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-
       {/* Sidebar */}
       <div
         className={cn(
@@ -184,7 +185,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <X className="h-6 w-6" />
           </button>
         </div>
-
         {/* Navigation */}
         <nav className={cn("mt-4 space-y-1", isCollapsed ? "px-1" : "px-2")}>
           {navigation.map((item) => {
@@ -217,7 +217,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
       </div>
-
       {/* Contenido principal */}
       <div
         className={cn(
@@ -239,7 +238,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               </div>
               <ChevronDown className="h-4 w-4" />
             </button>
-
             {/* Menú desplegable de usuario en desktop */}
             {isUserDropdownOpen && (
               <div className="absolute right-0 mt-2 w-64 bg-white/80 backdrop-blur-md rounded-lg shadow-lg border border-white/50">
@@ -275,7 +273,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             )}
           </div>
         </div>
-
         <main>{children}</main>
       </div>
     </div>

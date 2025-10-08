@@ -220,13 +220,19 @@ export async function POST(request: NextRequest) {
       status: 'processing'
     });
 
-  } catch (error: any) {
+  } catch (error) {
+    // Usamos 'error as Error' para que TypeScript sepa que tiene las propiedades 'message' y 'stack'.
+    const err = error as Error;
+
     console.error('=== VIDU GENERATE ERROR ===');
-    console.error('Error type:', error?.constructor?.name);
-    console.error('Error message:', error?.message);
-    console.error('Error stack:', error?.stack);
+    console.error('Error type:', err?.constructor?.name);
+    // Ya no es un error de tipo porque 'err' ahora es de tipo 'Error'
+    console.error('Error message:', err?.message);
+    console.error('Error stack:', err?.stack);
+
     return NextResponse.json(
-      { error: 'Error interno del servidor', details: error?.message },
+      // Usamos el objeto 'err' para obtener los detalles
+      { error: 'Error interno del servidor', details: err?.message },
       { status: 500 }
     );
   }

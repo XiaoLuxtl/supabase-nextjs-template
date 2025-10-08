@@ -1,4 +1,4 @@
-
+// src/hooks/usePackages.ts
 import { useEffect, useState } from 'react';
 import { createSPAClient } from '@/lib/supabase/client';
 import type { CreditPackage } from '@/types/database.types';
@@ -34,6 +34,8 @@ export function usePackages() {
   async function loadPackages() {
     try {
       const supabase = createSPAClient();
+      
+      // La consulta retorna un tipo genérico que necesitamos ajustar
       const { data, error: fetchError } = await supabase
         .from('credit_packages')
         .select('*')
@@ -41,10 +43,16 @@ export function usePackages() {
         .order('sort_order');
 
       if (fetchError) throw fetchError;
+      
+      // APLICAR TYPE ASSERTION AQUÍ 👇
+      const packagesData = (data || []) as unknown as CreditPackage[];
 
-      setPackages(data || []);
+      // setPackages ahora recibe el tipo CreditPackage[]
+      setPackages(packagesData); 
+      
       if (typeof window !== 'undefined') {
-        localStorage.setItem('credit_packages', JSON.stringify(data || []));
+        // También aseguramos el tipo al guardar en localStorage para mantener la consistencia
+        localStorage.setItem('credit_packages', JSON.stringify(packagesData));
       }
       setError(null);
     } catch (err) {

@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useGlobal } from "@/lib/context/GlobalContext";
-import { createSPASassClientAuthenticated as createSPASassClient } from "@/lib/supabase/client";
+import { createSPASassClientAuthenticated } from "@/lib/supabase/client";
 import { Key, User, CheckCircle } from "lucide-react";
 import { MFASetup } from "@/components/MFASetup";
-import { CalendarDays, Settings, ExternalLink } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 
 export default function UserSettingsPage() {
   const { user } = useGlobal();
@@ -52,8 +52,8 @@ export default function UserSettingsPage() {
     setSuccess("");
 
     try {
-      const supabase = await createSPASassClient();
-      const client = supabase.getSupabaseClient();
+      const supabase = await createSPASassClientAuthenticated();
+      const client = supabase.client.getSupabaseClient();
 
       const { error } = await client.auth.updateUser({
         password: newPassword,

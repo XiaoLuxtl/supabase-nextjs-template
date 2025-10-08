@@ -34,12 +34,14 @@ export async function updateSession(request: NextRequest) {
     // IMPORTANT: DO NOT REMOVE auth.getUser()
 
     const {data: user} = await supabase.auth.getUser()
+    const protectedRoutes = ['/app', '/dashboard', '/profile'];
     if (
-        (!user || !user.user) && request.nextUrl.pathname.startsWith('/app')
+        (!user || !user.user) &&
+        protectedRoutes.some(route => request.nextUrl.pathname.startsWith(route))
     ) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/auth/login'
-        return NextResponse.redirect(url)
+        const url = request.nextUrl.clone();
+        url.pathname = '/auth/login';
+        return NextResponse.redirect(url);
     }
 
     // IMPORTANT: You *must* return the supabaseResponse object as it is.

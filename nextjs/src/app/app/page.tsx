@@ -1,256 +1,65 @@
 // src/app/app/page.tsx
+
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useDropzone } from "react-dropzone";
+import React, { useState } from "react";
 import useDragScroll from "@/hooks/useDragScroll";
-import { createSPAClient } from "@/lib/supabase/client";
-import { processImageForVidu } from "@/lib/image-processor";
-import { VideoGeneration, UserProfile } from "@/types/database.types";
-import { VideoList } from "@/components/VideoList";
-import { VideoGeneratorForm } from "@/components/VideoGeneratorForm";
+// Hooks funcionales
+import { useVideoGenerationData } from "@/hooks/useVideoGenerationData";
+import { useImageUpload } from "@/hooks/useImageUpload";
+import { useVideoGeneration } from "@/hooks/useVideoGeneration";
+// Tipos y Componentes
+import { VideoGeneration } from "@/types/database.types";
+import VideoList from "@/components/VideoList";
+import VideoGeneratorForm from "@/components/VideoGeneratorForm";
 import { VideoPlayerMain } from "@/components/VideoPlayerMain";
 import { VideoPlayerMobile } from "@/components/VideoPlayerMobile";
 import { ArrowDownToLine, Loader2 } from "lucide-react";
 import { useGlobal } from "@/lib/context/GlobalContext";
 
 export default function VideoGeneratorUI() {
-  const [isGenerating, setIsGenerating] = useState(false);
+  const { user, loading: globalLoading } = useGlobal();
+
+  // Estados esenciales de la vista
   const [selectedVideo, setSelectedVideo] = useState<VideoGeneration | null>(
     null
   );
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [error, setError] = useState<string | null>(null);
-
-  // Estados de usuario
-  const { user, loading: globalLoading } = useGlobal();
-  const [videos, setVideos] = useState<VideoGeneration[]>([]);
-  const [loading, setLoading] = useState(true);
 
   const sliderRef = useDragScroll();
-  const supabase = createSPAClient();
 
-  // Cargar datos del usuario y configurar suscripciones
-  useEffect(() => {
-    let videoSubscription: ReturnType<typeof supabase.channel> | null = null;
+  // 1. Hook para la carga de datos (Videos y Supabase)
+  const { videos, setVideos, loading } = useVideoGenerationData(
+    selectedVideo,
+    setSelectedVideo
+  );
 
-    async function initializeUserData() {
-      try {
-        // No hacer nada si aún está cargando el contexto global
-        if (globalLoading) {
-          return;
-        }
+  // 2. Hook para la lógica de subida de imagen y Dropzone
+  const {
+    selectedFile,
+    preview,
+    uploadError,
+    isDragActive,
+    getRootProps,
+    getInputProps,
+    resetImage,
+  } = useImageUpload();
 
-        // Redirigir si no hay usuario después de cargar
-        if (!user) {
-          window.location.href = "/auth/login";
-          return;
-        }
+  // 3. Hook para la lógica de generación
+  const { isGenerating, generationError, handleGenerateClick } =
+    useVideoGeneration({
+      user,
+      selectedFile,
+      preview,
+      prompt,
+      setVideos, // pasado para actualizar la lista de videos
+      setSelectedVideo, // pasado para seleccionar el nuevo video
+      resetImage, // pasado para limpiar la imagen después de generar
+      setPrompt, // pasado para limpiar el prompt después de generar
+    });
 
-        // Cargar videos iniciales (Solo Completed y Pending)
-        const { data: videosData, error } = await supabase
-          .from("video_generations")
-          .select("*")
-          .eq("user_id", user.id)
-          .in("status", ["completed", "pending"])
-          .order("created_at", { ascending: false })
-          .limit(20);
-
-        if (videosData) {
-          setVideos(videosData);
-          if (!selectedVideo && videosData.length > 0) {
-            setSelectedVideo(videosData[0]);
-          }
-        }
-
-        // Suscribirse a cambios en los videos
-        videoSubscription = supabase
-          .channel("video_updates")
-          .on(
-            "postgres_changes",
-            {
-              event: "UPDATE",
-              schema: "public",
-              table: "video_generations",
-              filter: `user_id=eq.${user.id}`,
-            },
-            async (payload: any) => {
-              console.log("Video update:", payload);
-              const updatedVideo = payload.new as VideoGeneration;
-
-              setVideos((prevVideos) => {
-                const videoExists = prevVideos.some(
-                  (v) => v.id === updatedVideo.id
-                );
-                if (videoExists) {
-                  // Actualiza el video existente
-                  return prevVideos.map((video) =>
-                    video.id === updatedVideo.id
-                      ? { ...video, ...updatedVideo }
-                      : video
-                  );
-                } else {
-                  // Si no existe, lo agrega al inicio
-                  return [updatedVideo, ...prevVideos];
-                }
-              });
-
-              // Si el video acaba de pasar a 'completed', seleccionarlo automáticamente
-              setSelectedVideo((current) => {
-                if (current?.id === updatedVideo.id) {
-                  return { ...current, ...updatedVideo };
-                }
-                if (updatedVideo.status === "completed") {
-                  return { ...updatedVideo };
-                }
-                return current;
-              });
-            }
-          )
-          .subscribe();
-      } catch (err) {
-        console.error("Error loading user data:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    initializeUserData();
-
-    return () => {
-      if (videoSubscription) {
-        supabase.removeChannel(videoSubscription);
-      }
-    };
-  }, [user, globalLoading]);
-
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    accept: { "image/*": [".png", ".jpg", ".jpeg", ".webp"] },
-    maxSize: 20 * 1024 * 1024,
-    multiple: false,
-    onDrop: async (acceptedFiles) => {
-      const file = acceptedFiles[0];
-      if (!file) return;
-
-      setError(null);
-      setSelectedFile(file);
-
-      try {
-        const processed = await processImageForVidu(file);
-        setPreview(processed.dataUrl);
-      } catch (err: any) {
-        setError(err.message);
-        setSelectedFile(null);
-      }
-    },
-  });
-
-  useEffect(() => {
-    return () => {
-      if (preview) URL.revokeObjectURL(preview);
-    };
-  }, [preview]);
-
-  async function handleGenerateClick() {
-    if (!selectedFile && !prompt.trim()) {
-      setError("Por favor selecciona una imagen y escribe una descripción.");
-      return;
-    }
-    if (!selectedFile) {
-      setError("Por favor selecciona una imagen primero.");
-      return;
-    }
-    if (!prompt.trim()) {
-      setError("Por favor escribe una descripción.");
-      return;
-    }
-    if (!user) {
-      setError("No se ha detectado usuario. Intenta recargar la página.");
-      return;
-    }
-    if (user.credits_balance < 1) {
-      setError("No tienes créditos suficientes");
-      return;
-    }
-
-    setIsGenerating(true);
-    setError(null);
-
-    try {
-      // Procesar imagen (solo para obtener el base64)
-      const processed = await processImageForVidu(selectedFile!);
-
-      // Llamar al API
-      const response = await fetch("/api/vidu/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_base64: processed.base64,
-          prompt: prompt.trim(),
-          user_id: user.id,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Manejar error de contenido NSFW
-        if (data.code === "NSFW_CONTENT") {
-          setError("❌ " + data.error);
-          throw new Error("❌ " + data.error);
-        }
-        throw new Error(data.error || "Error al generar video");
-      }
-
-      // Capturar el prompt refinado del API
-      const finalPrompt = data.refined_prompt || prompt.trim();
-
-      // Crear placeholder para el nuevo video
-      const newVideo: VideoGeneration = {
-        id: data.generation_id,
-        user_id: user.id,
-        prompt: finalPrompt,
-        input_image_url: preview || "",
-        input_image_path: null,
-        model: "viduq1",
-        duration: 5,
-        aspect_ratio: "1:1",
-        resolution: "1080p",
-        vidu_task_id: data.vidu_task_id,
-        vidu_creation_id: null,
-        status: "pending",
-        credits_used: 1,
-        video_url: null,
-        cover_url: preview,
-        video_duration_actual: null,
-        video_fps: null,
-        bgm: false,
-        error_message: null,
-        error_code: null,
-        retry_count: 0,
-        max_retries: 3,
-        vidu_full_response: null,
-        created_at: new Date().toISOString(),
-        started_at: null,
-        completed_at: null,
-      };
-
-      setVideos((prev) => [newVideo, ...prev]);
-      setSelectedVideo(newVideo);
-
-      // Limpiar formulario
-      setSelectedFile(null);
-      setPreview(null);
-      setPrompt("");
-    } catch (err: any) {
-      console.error("Generate error:", err);
-      setError(err.message);
-    } finally {
-      setIsGenerating(false);
-    }
-  }
+  // COMBINACIÓN DE ERRORES: Muestra el error de generación o el error de subida
+  const currentError = generationError || uploadError;
 
   const handleDownload = () => {
     if (selectedVideo?.video_url) {
@@ -276,43 +85,69 @@ export default function VideoGeneratorUI() {
         {/* Columna izquierda: Controles */}
         <div className="lg:col-span-1">
           <VideoGeneratorForm
+            // Props de estado y manejo de eventos (ahora centralizados)
             isGenerating={isGenerating}
             credits={user?.credits_balance ?? 0}
-            error={error}
+            error={currentError} // Usamos el error combinado
             selectedFile={selectedFile}
             preview={preview}
             prompt={prompt}
             onPromptChange={setPrompt}
-            onImageChange={(file, previewUrl) => {
-              setSelectedFile(file);
-              setPreview(previewUrl);
-            }}
             onGenerate={handleGenerateClick}
+            // Propiedades de Dropzone para la subida de imagen (vienen del hook)
+            isDragActive={isDragActive}
+            getRootProps={getRootProps}
+            getInputProps={getInputProps}
+            onClearImage={resetImage}
           />
         </div>
 
-        {/* Columna derecha */}
+        {/* Columna derecha: Visualización de video y lista */}
         <div className="lg:col-span-2 space-y-6">
           {/* Header desktop */}
           <div className="hidden lg:flex justify-between items-center pb-2 border-b border-zinc-800">
             <div className="text-sm font-semibold">
               {selectedVideo && (
                 <>
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs ${
-                      selectedVideo.status === "completed"
-                        ? "bg-emerald-600/30 text-emerald-400"
-                        : selectedVideo.status === "processing"
-                        ? "bg-yellow-600/30 text-yellow-400"
-                        : "bg-pink-600/30 text-pink-400"
-                    }`}
-                  >
-                    {selectedVideo.status === "completed"
-                      ? "Listo"
-                      : selectedVideo.status === "processing"
-                      ? "Procesando"
-                      : "Pendiente"}
-                  </span>
+                  {(() => {
+                    // 1. Objeto de Mapeo: Asocia cada estado a su clase y texto
+                    const statusMap = {
+                      completed: {
+                        classes: "bg-emerald-600/30 text-emerald-400",
+                        text: "Listo",
+                      },
+                      processing: {
+                        classes: "bg-yellow-600/30 text-yellow-400",
+                        text: "Procesando",
+                      },
+                      pending: {
+                        classes: "bg-yellow-600/30 text-yellow-400",
+                        text: "Pendiente",
+                      },
+                      // Default para cualquier otro estado (ej: 'failed', 'error')
+                      default: {
+                        classes: "bg-pink-600/30 text-pink-400",
+                        text: "Error",
+                      },
+                    };
+
+                    // 2. Obtener la información. Usamos el tipo 'default' si el estado no está en el mapa.
+                    // La aserción 'as keyof typeof statusMap' es necesaria para que TypeScript acepte la búsqueda por clave.
+                    const statusInfo =
+                      statusMap[
+                        selectedVideo.status as keyof typeof statusMap
+                      ] || statusMap.default;
+
+                    return (
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs ${statusInfo.classes}`}
+                      >
+                        {statusInfo.text}
+                      </span>
+                    );
+                  })()}
+                  {/* FIN DE LA REFACTORIZACIÓN */}
+
                   <span className="ml-4 text-zinc-400">
                     {new Date(selectedVideo.created_at).toLocaleDateString()}
                   </span>
