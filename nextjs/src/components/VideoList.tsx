@@ -104,7 +104,7 @@ export const VideoList = React.memo(function VideoList({
               >
                 <Image
                   src={
-                    video.preview_url ||
+                    video.cover_url ||
                     "https://placehold.co/400x400?text=Processing"
                   }
                   alt={video.prompt}
