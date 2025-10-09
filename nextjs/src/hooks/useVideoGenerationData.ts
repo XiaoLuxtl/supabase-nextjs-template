@@ -34,6 +34,7 @@ export function useVideoGenerationData(
           .from('video_generations')
           .select('*')
           .eq('user_id', user.id)
+          .gt('credits_used', 0)
           .in('status', ['pending', 'queued', 'processing', 'completed', 'failed', 'cancelled'])
           .order('created_at', { ascending: false })
           .limit(20);
