@@ -12,6 +12,7 @@ export const VideoPlayerMain: React.FC<VideoPlayerMainProps> = ({
     <div className="hidden lg:block bg-zinc-800 rounded-lg shadow-2xl overflow-hidden aspect-video relative border-2 border-emerald-500">
       {selectedVideo?.video_url ? (
         <video
+          autoPlay
           key={selectedVideo.id}
           controls
           loop

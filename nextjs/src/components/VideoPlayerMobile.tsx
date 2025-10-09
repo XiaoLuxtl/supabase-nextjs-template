@@ -15,6 +15,7 @@ export const VideoPlayerMobile: React.FC<VideoPlayerMobileProps> = ({
     >
       {selectedVideo?.video_url ? (
         <video
+          autoPlay
           key={selectedVideo.id}
           loop
           controls

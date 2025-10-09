@@ -277,73 +277,84 @@ const HomePricing = () => {
                 pkg.is_popular ? "border-primary-500 shadow-lg border-2" : ""
               }`}
             >
+              {/* Popular badge */}
               {pkg.is_popular && (
                 <div className="absolute top-0 right-0 -translate-y-1/2 px-3 py-1 bg-primary-500 text-white text-sm rounded-full">
                   Más popular
                 </div>
               )}
 
-              <CardHeader>
-                <CardTitle>{pkg.name}</CardTitle>
-                <CardDescription>{pkg.description}</CardDescription>
-              </CardHeader>
+              {/* Make the entire card clickable */}
+              <button
+                onClick={() => {
+                  if (!user) {
+                    router.push("/auth/login");
+                  } else {
+                    handlePurchase(pkg);
+                  }
+                }}
+                disabled={purchasing === pkg.id || globalLoading}
+                className={`flex flex-col flex-grow focus:outline-none ${
+                  pkg.is_popular
+                    ? "hover:bg-primary-50/50 focus:bg-primary-50/50"
+                    : "hover:bg-gray-50 focus:bg-gray-50"
+                } transition-colors rounded-lg`}
+                aria-label={`Comprar paquete ${pkg.name}`}
+              >
+                <CardHeader>
+                  <CardTitle>{pkg.name}</CardTitle>
+                  <CardDescription>{pkg.description}</CardDescription>
+                </CardHeader>
 
-              <CardContent className="flex-grow flex flex-col">
-                <div className="mb-6">
-                  <span className="text-4xl font-bold">
-                    ${pkg.price_mxn?.toFixed(2)}
-                  </span>
-                  <span className="text-gray-600 ml-2">MXN</span>
-                  <div className="text-sm text-gray-500 mt-1">
-                    {pkg.credits_amount}{" "}
-                    {pkg.credits_amount === 1 ? "crédito" : "créditos"}
+                <CardContent className="flex flex-col flex-grow">
+                  <div className="mb-6">
+                    <span className="text-4xl font-bold">
+                      ${pkg.price_mxn?.toFixed(2)}
+                    </span>
+                    <span className="text-gray-600 ml-2">MXN</span>
+                    <div className="text-sm text-gray-500 mt-1">
+                      {pkg.credits_amount}{" "}
+                      {pkg.credits_amount === 1 ? "crédito" : "créditos"}
+                    </div>
                   </div>
-                </div>
 
-                <ul className="space-y-3 mb-8 flex-grow">
-                  {pkg.features &&
-                    Array.isArray(pkg.features) &&
-                    pkg.features.map((feature, i) => (
-                      <li key={i} className="flex items-center gap-2">
-                        <Check className="h-5 w-5 text-green-500" />
-                        <span className="text-gray-600">{feature}</span>
-                      </li>
-                    ))}
-                </ul>
+                  <ul className="space-y-3 mb-8 flex-grow">
+                    {pkg.features &&
+                      Array.isArray(pkg.features) &&
+                      pkg.features.map((feature, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <Check className="h-5 w-5 text-green-500" />
+                          <span className="text-gray-600">{feature}</span>
+                        </li>
+                      ))}
+                  </ul>
 
-                <button
-                  // ✅ NUEVO: Lógica condicional para manejar autenticación y compra
-                  onClick={() => {
-                    if (!user) {
-                      router.push("/auth/login"); // Redirige inmediatamente si no hay usuario
-                    } else {
-                      handlePurchase(pkg); // Procede si hay usuario
-                    }
-                  }}
-                  disabled={purchasing === pkg.id || globalLoading}
-                  className={`w-full text-center px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-                    pkg.is_popular
-                      ? "bg-primary-600 text-white hover:bg-primary-700"
-                      : "bg-gray-50 text-gray-900 hover:bg-gray-100"
-                  }`}
-                >
-                  {globalLoading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Cargando...
-                    </>
-                  ) : !user ? (
-                    "Iniciar Sesión / Registrarse"
-                  ) : purchasing === pkg.id ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Procesando...
-                    </>
-                  ) : (
-                    "Comprar"
-                  )}
-                </button>
-              </CardContent>
+                  {/* Button text at the bottom */}
+                  <div
+                    className={`w-full text-center px-6 py-3 font-medium flex items-center justify-center gap-2 ${
+                      pkg.is_popular
+                        ? "bg-primary-600 text-white"
+                        : "bg-gray-50 text-gray-900"
+                    } rounded-b-lg`}
+                  >
+                    {globalLoading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Cargando...
+                      </>
+                    ) : !user ? (
+                      "Iniciar Sesión / Registrarse"
+                    ) : purchasing === pkg.id ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      "Comprar"
+                    )}
+                  </div>
+                </CardContent>
+              </button>
             </Card>
           ))}
 

@@ -58,6 +58,7 @@ export interface VideoGeneration {
   id: string;
   user_id: string;
   prompt: string;
+  translated_prompt_en: string;
   input_image_url: string;
   input_image_path: string | null;
   model: string;

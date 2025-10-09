@@ -1,25 +1,18 @@
-import { useState, useEffect, useMemo } from "react";
-// Importamos solo createSPAClient, que devuelve el cliente Supabase base
-import { createSPAClient } from "@/lib/supabase/client"; 
-import { VideoGeneration } from "@/types/database.types";
-import { useGlobal } from "@/lib/context/GlobalContext";
+// src/hooks/useVideoGenerationData.ts
+import { useState, useEffect, useMemo } from 'react';
+import { createSPAClient } from '@/lib/supabase/client';
+import { VideoGeneration } from '@/types/database.types';
+import { useGlobal } from '@/lib/context/GlobalContext';
 
-/**
- * Custom hook para manejar la carga inicial de videos, la lógica de autenticación 
- * y la suscripción en tiempo real a la tabla 'video_generations' de Supabase.
- * * @param selectedVideo State value del video actualmente seleccionado
- * @param setSelectedVideo State setter para actualizar el video seleccionado
- */
 export function useVideoGenerationData(
-    selectedVideo: VideoGeneration | null,
-    setSelectedVideo: React.Dispatch<React.SetStateAction<VideoGeneration | null>>
+  selectedVideo: VideoGeneration | null,
+  setSelectedVideo: React.Dispatch<React.SetStateAction<VideoGeneration | null>>
 ) {
   const { user, loading: globalLoading } = useGlobal();
   const [videos, setVideos] = useState<VideoGeneration[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Inicializamos el cliente Supabase una sola vez.
-  // CORRECCIÓN: createSPAClient() ya devuelve el cliente Supabase base, no el wrapper.
+  // Inicializar cliente Supabase
   const supabase = useMemo(() => createSPAClient(), []);
 
   useEffect(() => {
@@ -31,99 +24,123 @@ export function useVideoGenerationData(
           return;
         }
 
-        // Redirigir si no hay usuario después de cargar (replicando la lógica original)
         if (!user) {
-          window.location.href = "/auth/login";
+          window.location.href = '/auth/login';
           return;
         }
-        
-        // --- 1. Cargar videos iniciales ---
-        const { data: videosData } = await supabase
-          .from("video_generations")
-          .select("*")
-          .eq("user_id", user.id)
-          .in("status", ["completed", "pending"])
-          .order("created_at", { ascending: false })
+
+        // Cargar videos iniciales
+        const { data: videosData, error } = await supabase
+          .from('video_generations')
+          .select('*')
+          .eq('user_id', user.id)
+          .in('status', ['pending', 'queued', 'processing', 'completed', 'failed', 'cancelled'])
+          .order('created_at', { ascending: false })
           .limit(20);
 
-        if (videosData) {
+        if (error) {
+          console.error('Error fetching videos:', JSON.stringify(error, null, 2));
+        } else if (videosData) {
           setVideos(videosData as VideoGeneration[]);
-          // Seleccionar el primer video solo si no hay uno seleccionado previamente
           if (!selectedVideo && videosData.length > 0) {
             setSelectedVideo(videosData[0] as VideoGeneration);
           }
         }
 
-        // --- 2. Suscribirse a cambios en los videos ---
+        // Suscripción a INSERT y UPDATE
         videoSubscription = supabase
-          .channel("video_updates")
+          .channel('video_updates')
           .on(
-            "postgres_changes",
+            'postgres_changes',
             {
-              event: "UPDATE",
-              schema: "public",
-              table: "video_generations",
+              event: '*', // Escuchar INSERT, UPDATE, DELETE
+              schema: 'public',
+              table: 'video_generations',
               filter: `user_id=eq.${user.id}`,
             },
             (payload) => {
-              console.log("Video update:", payload);
+              console.log('Supabase event:', JSON.stringify(payload, null, 2));
               const updatedVideo = payload.new as VideoGeneration;
 
-              setVideos((prevVideos) => {
-                const videoExists = prevVideos.some((v) => v.id === updatedVideo.id);
-                if (videoExists) {
-                  // Actualiza el video existente
-                  return prevVideos.map((video) =>
-                    video.id === updatedVideo.id
-                      ? { ...video, ...updatedVideo }
-                      : video
-                  );
-                } else {
-                  // Si no existe, lo agrega al inicio (nuevo video en proceso)
-                  return [updatedVideo, ...prevVideos];
-                }
-              });
+              if (payload.eventType === 'INSERT') {
+                // Evitar duplicados
+                setVideos((prev) => {
+                  if (prev.some((v) => v.id === updatedVideo.id)) {
+                    return prev;
+                  }
+                  return [updatedVideo, ...prev];
+                });
+              } else if (payload.eventType === 'UPDATE') {
+                setVideos((prev) =>
+                  prev.map((video) =>
+                    video.id === updatedVideo.id ? { ...video, ...updatedVideo } : video
+                  )
+                );
+              } else if (payload.eventType === 'DELETE') {
+                setVideos((prev) => prev.filter((v) => v.id !== payload.old.id));
+              }
 
-              // Si el video que estaba seleccionado se actualiza, actualizarlo
+              // Actualizar video seleccionado
               setSelectedVideo((current) => {
                 if (current?.id === updatedVideo.id) {
                   return { ...current, ...updatedVideo };
                 }
-                // Si el video acaba de completarse y no hay nada seleccionado, seleccionarlo
-                if (updatedVideo.status === "completed" && !current) { 
+                if (updatedVideo.status === 'completed' && !current) {
                   return { ...updatedVideo };
                 }
                 return current;
               });
             }
           )
-          .subscribe();
+          .subscribe((status) => {
+            console.log('Subscription status:', status);
+            if (status === 'SUBSCRIBED') {
+              console.log('Subscribed to video_updates channel');
+            } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+              console.error('Subscription error or closed:', status);
+            }
+          });
+
+        // Manejo de videos atascados
+        const checkStaleVideos = async () => {
+          const { data } = await supabase
+            .from('video_generations')
+            .select('*')
+            .eq('user_id', user.id)
+            .in('status', ['pending', 'queued', 'processing'])
+            .lt('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString());
+          if (data?.length) {
+            console.log('Stale videos:', JSON.stringify(data, null, 2));
+            await supabase
+              .from('video_generations')
+              .update({ status: 'failed', error_message: 'Video processing timed out' })
+              .in('id', data.map((v) => v.id));
+          }
+        };
+        const interval = setInterval(checkStaleVideos, 60 * 1000);
+        return () => clearInterval(interval);
       } catch (err) {
-        console.error("Error loading user data:", err);
+        console.error('Error loading user data:', JSON.stringify(err, null, 2));
       } finally {
         setLoading(false);
       }
     }
 
-    // Llamar a la función solo si el contexto global ha terminado de cargar
     if (!globalLoading) {
       initializeUserData();
     }
-    
 
     return () => {
-      // Limpieza de la suscripción al desmontar o cambiar dependencias
       if (videoSubscription) {
         supabase.removeChannel(videoSubscription);
       }
     };
-    // Dependencias ajustadas para el hook. Se añadió supabase al array de dependencias.
-  }, [user, globalLoading, selectedVideo, setSelectedVideo, supabase]);
-  
+  }, [user, globalLoading, supabase]);
+
   return {
     videos,
     setVideos,
     loading,
-    supabase, 
+    supabase,
   };
 }

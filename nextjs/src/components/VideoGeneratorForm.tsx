@@ -73,7 +73,7 @@ export const VideoGeneratorForm: React.FC<VideoGeneratorFormProps> = React.memo(
             value={prompt}
             onChange={(e) => onPromptChange(e.target.value)}
             className="w-full bg-zinc-900 border border-zinc-700 text-white p-3 rounded-lg focus:border-emerald-500 focus:ring-emerald-500 resize-none placeholder-zinc-500"
-            placeholder="Ej: Una mujer paseando por un jardín japonés al atardecer..."
+            placeholder="Describe la acción que quieres ver en el video... Ej: Quiero que ella lo abrace a él mientras la cámara gira a su alrededor"
           />
         </div>
 

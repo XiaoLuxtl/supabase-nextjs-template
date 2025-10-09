@@ -2,60 +2,72 @@
 import { useRef, useEffect, RefObject } from "react";
 
 /**
- * Hook para añadir la funcionalidad de "drag-to-scroll" horizontal a un elemento de escritorio.
- * Usa eventos de mouse (mousedown, mousemove, mouseup) para desplazar el contenido.
- * @returns {RefObject<HTMLDivElement | null>} La referencia que debe asignarse al contenedor scrolleable.
+ * Hook para añadir la funcionalidad de "drag-to-scroll" horizontal en escritorio.
+ * Usa eventos de puntero (pointerdown, pointermove, pointerup) para desplazar el contenido.
+ * @returns {RefObject<HTMLDivElement>} La referencia que debe asignarse al contenedor scrolleable.
  */
 const useDragScroll = (): RefObject<HTMLDivElement | null> => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-
-  const isMouseDown = useRef(false);
+  const isDragging = useRef(false);
   const startX = useRef(0);
   const scrollLeft = useRef(0);
 
   useEffect(() => {
     const slider = containerRef.current;
-    if (!slider) return;
+    if (!slider) {
+      return;
+    }
 
-    const handleMouseDown = (e: MouseEvent) => {
-      if (window.innerWidth < 1024) return;
-
-      isMouseDown.current = true;
+    const handlePointerDown = (e: PointerEvent) => {
+      e.preventDefault();
+      isDragging.current = true;
       slider.classList.add("active-drag");
-      startX.current = e.pageX - slider.offsetLeft;
+      startX.current = e.clientX - (slider.getBoundingClientRect().left || 0);
       scrollLeft.current = slider.scrollLeft;
     };
 
-    const handleMouseLeave = () => {
-      isMouseDown.current = false;
-      slider.classList.remove("active-drag");
+    const handlePointerUp = () => {
+      if (isDragging.current) {
+        isDragging.current = false;
+        slider.classList.remove("active-drag");
+      }
     };
 
-    const handleMouseUp = () => {
-      isMouseDown.current = false;
-      slider.classList.remove("active-drag");
+    const handlePointerLeave = () => {
+      if (isDragging.current) {
+        isDragging.current = false;
+        slider.classList.remove("active-drag");
+      }
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isMouseDown.current) return;
+    const handlePointerMove = (e: PointerEvent) => {
+      if (!isDragging.current) return;
       e.preventDefault();
-      const x = e.pageX - slider.offsetLeft;
-      const walk = (x - startX.current) * 1.5;
-      slider.scrollLeft = scrollLeft.current - walk;
+      const x = e.clientX - (slider.getBoundingClientRect().left || 0);
+      const walk = (x - startX.current) * 1.2;
+      const newScrollLeft = scrollLeft.current - walk;
+      slider.scrollLeft = newScrollLeft;
+      if (slider.scrollLeft !== newScrollLeft) {
+        slider.scrollTo({ left: newScrollLeft, behavior: "auto" });
+      }
     };
 
-    slider.addEventListener("mousedown", handleMouseDown);
-    slider.addEventListener("mouseleave", handleMouseLeave);
-    slider.addEventListener("mouseup", handleMouseUp);
-    slider.addEventListener("mousemove", handleMouseMove);
+    slider.addEventListener("pointerdown", handlePointerDown, {
+      passive: false,
+    });
+    slider.addEventListener("pointerup", handlePointerUp);
+    slider.addEventListener("pointerleave", handlePointerLeave);
+    slider.addEventListener("pointermove", handlePointerMove, {
+      passive: false,
+    });
 
     return () => {
-      slider.removeEventListener("mousedown", handleMouseDown);
-      slider.removeEventListener("mouseleave", handleMouseLeave);
-      slider.removeEventListener("mouseup", handleMouseUp);
-      slider.removeEventListener("mousemove", handleMouseMove);
+      slider.removeEventListener("pointerdown", handlePointerDown);
+      slider.removeEventListener("pointerup", handlePointerUp);
+      slider.removeEventListener("pointerleave", handlePointerLeave);
+      slider.removeEventListener("pointermove", handlePointerMove);
     };
-  }, []);
+  }, [containerRef.current]); // Re-run when ref binds
 
   return containerRef;
 };

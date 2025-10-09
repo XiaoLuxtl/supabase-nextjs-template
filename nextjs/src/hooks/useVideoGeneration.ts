@@ -1,145 +1,152 @@
-import React, { useState, useCallback } from "react";
-import { VideoGeneration } from "@/types/database.types";
-import { User } from "@/lib/context/GlobalContext"; // Asumimos que User se define aquí
-import { processImageForVidu } from "@/lib/image-processor";
-
-// Definición de tipos para las funciones de actualización del padre
-type SetVideosFunc = React.Dispatch<React.SetStateAction<VideoGeneration[]>>;
-type SetSelectedVideoFunc = React.Dispatch<React.SetStateAction<VideoGeneration | null>>;
-type ResetImageFunc = () => void;
-type SetPromptFunc = React.Dispatch<React.SetStateAction<string>>;
+// src/hooks/useVideoGeneration.ts
+import { useState, useCallback } from 'react';
+import { VideoGeneration, ViduSuccessResponse } from '@/types/database.types';
+import { User } from '@/lib/context/GlobalContext';
+import { processImageForVidu } from '@/lib/image-processor';
+import { createSPAClient } from '@/lib/supabase/client';
 
 interface UseVideoGenerationProps {
-    user: User | null;
-    selectedFile: File | null;
-    preview: string | null;
-    prompt: string;
-    // Callbacks del componente padre para actualizar estados externos
-    setVideos: SetVideosFunc;
-    setSelectedVideo: SetSelectedVideoFunc;
-    resetImage: ResetImageFunc;
-    setPrompt: SetPromptFunc;
+  user: User | null;
+  selectedFile: File | null;
+  preview: string | null;
+  prompt: string;
+  setVideos: React.Dispatch<React.SetStateAction<VideoGeneration[]>>;
+  setSelectedVideo: React.Dispatch<React.SetStateAction<VideoGeneration | null>>;
+  resetImage: () => void;
+  setPrompt: React.Dispatch<React.SetStateAction<string>>;
 }
 
-/**
- * Custom hook que maneja toda la lógica de validación y llamada al API de generación de video.
- */
 export function useVideoGeneration({
-    user,
-    selectedFile,
-    preview,
-    prompt,
-    setVideos,
-    setSelectedVideo,
-    resetImage,
-    setPrompt,
+  user,
+  selectedFile,
+  prompt,
+  setVideos,
+  setSelectedVideo,
+  resetImage,
+  setPrompt,
 }: UseVideoGenerationProps) {
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const supabase = createSPAClient();
 
-    const handleGenerateClick = useCallback(async () => {
-        // 1. Validaciones
-        if (!selectedFile) {
-            setError("Por favor selecciona una imagen primero.");
-            return;
+  const validateInputs = useCallback((): boolean => {
+    if (!selectedFile) {
+      setError('Por favor selecciona una imagen primero.');
+      return false;
+    }
+    if (!prompt.trim()) {
+      setError('Por favor escribe una descripción.');
+      return false;
+    }
+    if (!user) {
+      setError('No se ha detectado usuario. Intenta recargar la página.');
+      return false;
+    }
+    if (user.credits_balance < 1) {
+      setError('No tienes créditos suficientes');
+      return false;
+    }
+    const lastSubmission = localStorage.getItem('lastSubmission');
+    if (lastSubmission && Date.now() - parseInt(lastSubmission) < 5000) {
+      setError('Por favor, espera 5 segundos antes de generar otro video');
+      return false;
+    }
+    return true;
+  }, [user, selectedFile, prompt]);
+
+  const handleGenerateClick = useCallback(async () => {
+    if (!validateInputs()) return;
+
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      // Procesar imagen para obtener base64
+      const processed = await processImageForVidu(selectedFile!);
+
+      // Llamar a la API de Vidu
+      const response = await fetch('/api/vidu/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_base64: processed.base64,
+          prompt: prompt.trim(),
+          user_id: user!.id,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        const errorMessage = data.code === 'NSFW_CONTENT' ? `Contenido NSFW detectado: ${data.error}` : data.error || 'Error al generar video';
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      // Obtener el video desde Supabase
+      const { data: video, error: fetchError } = await supabase
+        .from('video_generations')
+        .select('*')
+        .eq('id', data.generation_id)
+        .single();
+      if (fetchError || !video) {
+        console.error('Error fetching video:', JSON.stringify(fetchError, null, 2));
+        setError('Error al obtener el video generado');
+        return;
+      }
+
+      // Validar y castear para cumplir con VideoGeneration
+      const validStatuses = ['pending', 'queued', 'processing', 'completed', 'failed', 'cancelled'] as const;
+      const isValidViduResponse = (response: unknown): response is ViduSuccessResponse =>
+        response != null && typeof response === 'object' && 'task_id' in response;
+
+      const safeVideo: VideoGeneration = {
+        ...video,
+        translated_prompt_en: video.translated_prompt_en ?? '',
+        status: validStatuses.includes(video.status as typeof validStatuses[number])
+          ? video.status as VideoGeneration['status']
+          : 'pending',
+        vidu_full_response: isValidViduResponse(video.vidu_full_response)
+          ? video.vidu_full_response as ViduSuccessResponse
+          : null,
+      };
+
+      // Añadir al estado local (evitar duplicados)
+      setVideos((prev) => {
+        if (prev.some((v) => v.id === safeVideo.id)) {
+          return prev;
         }
-        if (!prompt.trim()) {
-            setError("Por favor escribe una descripción.");
-            return;
-        }
-        if (!user) {
-            setError("No se ha detectado usuario. Intenta recargar la página.");
-            return;
-        }
-        if (user.credits_balance < 1) {
-            setError("No tienes créditos suficientes");
-            return;
-        }
-        
-        // Resetear error antes de empezar la generación
-        setError(null); 
-        setIsGenerating(true);
+        return [safeVideo, ...prev];
+      });
+      setSelectedVideo(safeVideo);
 
-        try {
-            // Procesar imagen para obtener el base64
-            const processed = await processImageForVidu(selectedFile);
+      // Actualizar créditos localmente
+      const { data: userData, error: userError } = await supabase
+        .from('user_profiles')
+        .select('credits_balance')
+        .eq('id', user!.id)
+        .single();
+      if (userError || !userData) {
+        console.error('Error fetching credits:', JSON.stringify(userError, null, 2));
+      } else {
+        user!.credits_balance = userData.credits_balance;
+      }
 
-            // 2. Llamar al API
-            const response = await fetch("/api/vidu/generate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    image_base64: processed.base64,
-                    prompt: prompt.trim(),
-                    user_id: user.id,
-                }),
-            });
+      // Limpiar formulario
+      resetImage();
+      setPrompt('');
+      localStorage.setItem('lastSubmission', Date.now().toString());
+    } catch (err: unknown) {
+      console.error('Generate error:', JSON.stringify(err, null, 2));
+      const errorMessage = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Error desconocido al generar video';
+      setError(errorMessage);
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [user, selectedFile, prompt, setVideos, setSelectedVideo, resetImage, setPrompt]);
 
-            const data = await response.json();
-
-            if (!response.ok) {
-                if (data.code === "NSFW_CONTENT") {
-                    setError("❌ " + data.error);
-                    throw new Error("❌ " + data.error);
-                }
-                throw new Error(data.error || "Error al generar video");
-            }
-
-            // 3. Crear y actualizar placeholder de video
-            const finalPrompt = data.refined_prompt || prompt.trim();
-
-            const newVideo: VideoGeneration = {
-                id: data.generation_id,
-                user_id: user.id,
-                prompt: finalPrompt,
-                input_image_url: preview || "",
-                input_image_path: null,
-                model: "viduq1",
-                duration: 5,
-                aspect_ratio: "1:1",
-                resolution: "1080p",
-                vidu_task_id: data.vidu_task_id,
-                vidu_creation_id: null,
-                status: "pending",
-                credits_used: 1,
-                video_url: null,
-                cover_url: preview,
-                video_duration_actual: null,
-                video_fps: null,
-                bgm: false,
-                error_message: null,
-                error_code: null,
-                retry_count: 0,
-                max_retries: 3,
-                vidu_full_response: null,
-                created_at: new Date().toISOString(),
-                started_at: null,
-                completed_at: null,
-            };
-
-            setVideos((prev) => [newVideo, ...prev]);
-            setSelectedVideo(newVideo);
-
-            // 4. Limpiar estados del formulario
-            resetImage(); // Limpia archivo e imagen de previsualización
-            setPrompt(""); // Limpia el prompt
-        } catch (err: unknown) { 
-            console.error("Generate error:", err);
-            let errorMessage = "Error desconocido al generar video.";
-            if (err instanceof Error) {
-                errorMessage = err.message;
-            } else if (typeof err === 'string') {
-                errorMessage = err;
-            }
-            setError(errorMessage);
-        } finally {
-            setIsGenerating(false);
-        }
-    }, [user, selectedFile, preview, prompt, setVideos, setSelectedVideo, resetImage, setPrompt]);
-
-    return {
-        isGenerating,
-        generationError: error,
-        handleGenerateClick,
-    };
+  return {
+    isGenerating,
+    generationError: error,
+    handleGenerateClick,
+  };
 }

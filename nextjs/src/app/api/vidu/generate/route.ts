@@ -1,10 +1,8 @@
 // src/app/api/vidu/generate/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { refineViduPrompt } from '@/lib/prompt-refiner'; // ⬅️ Importar el refinador
-import { describeImage, checkNSFWContent } from '@/lib/ai-vision'; // ⬅️ Importar funciones de IA Vision
-
+import { refineViduPrompt } from '@/lib/prompt-refiner';
+import { describeImage, checkNSFWContent } from '@/lib/ai-vision';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,23 +11,23 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-        const body = await request.json();
-        const { image_base64, prompt: userPrompt, user_id } = body; 
+    const body = await request.json();
+    const { image_base64, prompt: userPrompt, user_id } = body;
 
     console.log('=== VIDU GENERATE REQUEST ===');
     console.log('User ID:', user_id);
     console.log('Prompt length:', userPrompt?.length);
     console.log('Image base64 length:', image_base64?.length);
 
-    if (!image_base64 || !userPrompt || !user_id) {
+    if (!userPrompt || !user_id) {
       console.error('Missing required fields');
       return NextResponse.json(
-        { error: 'image_base64, prompt y user_id son requeridos' },
+        { error: 'prompt y user_id son requeridos' },
         { status: 400 }
       );
     }
 
-    // 1. Verificar créditos del usuario
+    // Verificar créditos
     console.log('Checking user credits...');
     const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
@@ -42,104 +40,87 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
     }
 
-    console.log('User credits:', profile.credits_balance);
-
     if (profile.credits_balance < 1) {
-      return NextResponse.json(
-        { error: 'Créditos insuficientes' },
-        { status: 402 }
-      );
+      return NextResponse.json({ error: 'Créditos insuficientes' }, { status: 402 });
     }
 
-    // Verificar si la imagen es apropiada
-    console.log('Checking image content...');
-    const nsfwCheck = await checkNSFWContent(image_base64);
-    if (nsfwCheck.isNSFW) {
-      console.log('NSFW content detected:', nsfwCheck.reason);
-      return NextResponse.json(
-        { 
-          error: 'Contenido no permitido: ' + (nsfwCheck.reason || 'La imagen contiene contenido inapropiado'),
-          code: 'NSFW_CONTENT'
-        }, 
-        { status: 400 }
-      );
+    // Validar NSFW (si hay imagen)
+    let imageDescription = 'ninguna imagen proporcionada';
+    if (image_base64) {
+      console.log('Checking image content...');
+      const nsfwCheck = await checkNSFWContent(image_base64);
+      if (nsfwCheck.isNSFW) {
+        console.log('NSFW content detected:', nsfwCheck.reason);
+        return NextResponse.json(
+          { error: `Contenido no permitido: ${nsfwCheck.reason || 'Imagen inapropiada'}`, code: 'NSFW_CONTENT' },
+          { status: 400 }
+        );
+      }
+      console.log('Analyzing image with GPT-4 Vision...');
+      imageDescription = await describeImage(image_base64);
+      console.log('Image Description:', imageDescription);
     }
 
-    // 🔑 PASO DE IA 1: Análisis de Imagen con GPT-4 Vision
-    console.log('Analyzing image with GPT-4 Vision...');
-    const imageDescription = await describeImage(image_base64);
-    console.log('Image Description:', imageDescription);
-
-    // 🔑 PASO DE IA 2: Refinamiento de Prompt con GPT-4o
+    // Refinar prompt
     console.log('Refining prompt with GPT-4o...');
     const refinedPrompt = await refineViduPrompt(userPrompt, imageDescription);
     console.log('Refined Prompt:', refinedPrompt);
 
-    // 2. Crear registro de generación pendiente (Guardamos el prompt original)
-    console.log('Creating generation record with ORIGINAL prompt...');
+    // Crear registro en Supabase
+    console.log('Creating generation record...');
+    const videoData = {
+      user_id,
+      prompt: userPrompt,
+      translated_prompt_en: refinedPrompt,
+      input_image_url: '',
+      // input_image_path: image_base64 ? `user_${user_id}/${Date.now()}.jpg` : null,
+      status: 'pending',
+      model: 'viduq1',
+      duration: 5,
+      aspect_ratio: '16:9',
+      resolution: '1080p',
+      credits_used: 0,
+      created_at: new Date().toISOString(),
+    };
+
     const { data: generation, error: genError } = await supabase
-        .from('video_generations')
-        .insert({
-            user_id,
-            prompt: userPrompt, // ⬅️ GUARDAR PROMPT ORIGINAL DEL USUARIO
-            input_image_url: '',
-            status: 'pending',
-            model: 'viduq1',
-            duration: 5,
-            aspect_ratio: '16:9',
-            resolution: '1080p',
-            credits_used: 0
-        })
-        .select()
-        .single();
+      .from('video_generations')
+      .insert(videoData)
+      .select()
+      .single();
 
     if (genError) {
       console.error('Error creating generation:', genError);
       return NextResponse.json({ error: 'Error al crear generación' }, { status: 500 });
     }
 
-    // 3. Llamar a Vidu API PRIMERO (antes de consumir crédito) (Usamos el prompt refinado)
-    console.log('Calling Vidu API with REFINED prompt...');
-    console.log('Vidu URL:', process.env.VIDU_API_URL);
-    console.log('API Key present:', !!process.env.VIDU_API_KEY);
-    console.log('Callback URL:', `${process.env.NEXT_PUBLIC_APP_URL}/api/vidu/webhook`);
-
+    // Llamar a Vidu API
+    console.log('Calling Vidu API...');
     const viduPayload = {
       model: 'viduq1',
-      images: [`data:image/jpeg;base64,${image_base64}`],
+      images: image_base64 ? [`data:image/jpeg;base64,${image_base64}`] : [],
       prompt: refinedPrompt,
       duration: 5,
       resolution: '1080p',
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/vidu/webhook`
+      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/vidu/webhook`,
     };
-
-    console.log('Vidu payload (without image):', {
-      ...viduPayload,
-      images: ['<base64_image_data_omitted>']
-    });
 
     const viduResponse = await fetch(process.env.VIDU_API_URL!, {
       method: 'POST',
       headers: {
         'Authorization': `Token ${process.env.VIDU_API_KEY}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify(viduPayload)
+      body: JSON.stringify(viduPayload),
     });
 
-    console.log('Vidu response status:', viduResponse.status);
-    
     const responseText = await viduResponse.text();
+    console.log('Vidu response status:', viduResponse.status);
     console.log('Vidu raw response:', responseText);
 
     if (!viduResponse.ok) {
       console.error('Vidu API error:', responseText);
-      
-      await supabase
-        .from('video_generations')
-        .delete()
-        .eq('id', generation.id);
-
+      await supabase.from('video_generations').delete().eq('id', generation.id);
       return NextResponse.json({ error: `Vidu API error: ${responseText}` }, { status: viduResponse.status });
     }
 
@@ -149,91 +130,61 @@ export async function POST(request: NextRequest) {
       console.log('Vidu parsed data:', viduData);
     } catch (parseError) {
       console.error('Failed to parse Vidu response:', parseError);
-      
-      await supabase
-        .from('video_generations')
-        .delete()
-        .eq('id', generation.id);
-
+      await supabase.from('video_generations').delete().eq('id', generation.id);
       return NextResponse.json({ error: 'Invalid Vidu response' }, { status: 500 });
     }
 
-    // Verificar que tenemos un task_id válido
     const taskId = viduData.task_id?.toString();
-    console.log('Vidu task_id:', taskId);
-
     if (!taskId) {
       console.error('No task_id in Vidu response');
-      await supabase
-        .from('video_generations')
-        .delete()
-        .eq('id', generation.id);
+      await supabase.from('video_generations').delete().eq('id', generation.id);
       return NextResponse.json({ error: 'No task_id in response' }, { status: 500 });
     }
 
-    // 4. Consumir crédito (Vidu aceptó el request)
+    // Consumir crédito
     console.log('Consuming credit...');
-    const { error: consumeError } = await supabase.rpc(
-      'consume_credit_for_video',
-      {
-        p_user_id: user_id,
-        p_video_id: generation.id
-      }
-    );
+    const { error: consumeError } = await supabase.rpc('consume_credit_for_video', {
+      p_user_id: user_id,
+      p_video_id: generation.id,
+    });
 
     if (consumeError) {
       console.error('Error consuming credit:', consumeError);
       await supabase
         .from('video_generations')
-        .update({ 
-          status: 'failed',
-          error_message: 'Error al consumir crédito'
-        })
+        .update({ status: 'failed', error_message: 'Error al consumir crédito' })
         .eq('id', generation.id);
-
       return NextResponse.json({ error: 'Error al consumir crédito' }, { status: 500 });
     }
 
-    // 5. Actualizar generación con task_id de Vidu
+    // Actualizar generación
     const { error: updateError } = await supabase
-        .from('video_generations')
-        .update({
-            vidu_task_id: taskId,
-            status: 'processing',
-            started_at: new Date().toISOString(),
-            vidu_full_response: viduData,
-            credits_used: 1,
-            translated_prompt_en: refinedPrompt, // ⬅️ GUARDAR PROMPT REFINADO
-        })
-        .eq('id', generation.id);
+      .from('video_generations')
+      .update({
+        vidu_task_id: taskId,
+        status: 'processing',
+        started_at: new Date().toISOString(),
+        vidu_full_response: viduData,
+        credits_used: 1,
+      })
+      .eq('id', generation.id);
 
     if (updateError) {
-      console.error('Error updating generation with task_id:', updateError);
+      console.error('Error updating generation:', updateError);
       return NextResponse.json({ error: 'Error updating generation' }, { status: 500 });
     }
 
-    // 6. Retornar info al frontend
     return NextResponse.json({
       success: true,
       generation_id: generation.id,
       vidu_task_id: taskId,
-      status: 'processing'
+      status: 'processing',
     });
-
   } catch (error) {
-    // Usamos 'error as Error' para que TypeScript sepa que tiene las propiedades 'message' y 'stack'.
     const err = error as Error;
-
     console.error('=== VIDU GENERATE ERROR ===');
-    console.error('Error type:', err?.constructor?.name);
-    // Ya no es un error de tipo porque 'err' ahora es de tipo 'Error'
-    console.error('Error message:', err?.message);
-    console.error('Error stack:', err?.stack);
-
-    return NextResponse.json(
-      // Usamos el objeto 'err' para obtener los detalles
-      { error: 'Error interno del servidor', details: err?.message },
-      { status: 500 }
-    );
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    return NextResponse.json({ error: 'Error interno del servidor', details: err.message }, { status: 500 });
   }
 }

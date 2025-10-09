@@ -327,7 +327,7 @@ export type Database = {
           retry_count: number
           started_at: string | null
           status: string
-          translated_prompt_en: string | null
+          translated_prompt_en: string
           user_id: string
           video_duration_actual: number | null
           video_fps: number | null
