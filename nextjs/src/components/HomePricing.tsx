@@ -38,7 +38,7 @@ const DynamicCreditCard = ({
   currentUser,
   isGlobalLoading,
 }: DynamicCreditCardProps) => {
-  const [credits, setCredits] = useState(() => pkg.min_credits || 15);
+  const [credits, setCredits] = useState(() => pkg.min_credits || 20);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const totalPrice = credits * (pkg.price_per_credit || 30);
   const router = useRouter(); // Necesario para la redirección
@@ -99,14 +99,17 @@ const DynamicCreditCard = ({
         </div>
 
         {/* Precio Total */}
+
         <div className="mb-6 text-center">
-          <span className="text-2xl font-bold">
-            ${totalPrice.toFixed(2)} MXN
-          </span>
-          <span className="text-gray-600 ml-2">/ Total</span>
-          <div className="text-sm text-gray-500 mt-1">
-            ${pkg.price_per_credit} MXN por crédito
-          </div>
+          <button onClick={handleButtonClick}>
+            <span className="text-2xl font-bold">
+              ${totalPrice.toFixed(2)} MXN
+            </span>
+            <span className="text-gray-600 ml-2">/ Total</span>
+            <div className="text-sm text-gray-500 mt-1">
+              ${pkg.price_per_credit} MXN por crédito
+            </div>
+          </button>
         </div>
 
         <ul className="space-y-3 mb-8">

@@ -1,3 +1,5 @@
+// src/components/VideoPlayerMain.tsx
+
 import React from "react";
 import { VideoGeneration } from "@/types/database.types";
 

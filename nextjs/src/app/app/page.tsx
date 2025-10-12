@@ -37,17 +37,20 @@ export default function VideoGeneratorUI() {
     getInputProps,
     resetImage,
   } = useImageUpload();
-  const { isGenerating, generationError, handleGenerateClick } =
-    useVideoGeneration({
-      user,
-      selectedFile,
-      preview,
-      prompt,
-      setVideos,
-      setSelectedVideo,
-      resetImage,
-      setPrompt,
-    });
+  const {
+    isGenerating,
+    error: generationError, // 💡 Corregido: Alias 'error' del hook a 'generationError'
+    generateVideo: handleGenerateClick, // 💡 Corregido: Alias 'generateVideo' del hook a 'handleGenerateClick'
+  } = useVideoGeneration({
+    user,
+    selectedFile,
+    preview,
+    prompt,
+    setVideos,
+    setSelectedVideo,
+    resetImage,
+    setPrompt,
+  });
 
   const currentError = generationError || uploadError;
 
