@@ -7,8 +7,8 @@ import { useGlobal } from "@/lib/context/GlobalContext";
 // Tipo para el payload de Supabase
 interface RealtimePayload {
   eventType: "INSERT" | "UPDATE" | "DELETE";
-  new: Record<string, any> | null;
-  old: Record<string, any> | null;
+  new: Partial<VideoGeneration> | null;
+  old: Partial<VideoGeneration> | null;
   schema: string;
   table: string;
 }
