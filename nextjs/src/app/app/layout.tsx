@@ -19,9 +19,5 @@ export const metadata: Metadata = {
 };
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return (
-    <GlobalProvider>
-      <AppLayout>{children}</AppLayout>
-    </GlobalProvider>
-  );
+  return <AppLayout>{children}</AppLayout>;
 }

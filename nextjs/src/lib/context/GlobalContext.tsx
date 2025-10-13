@@ -5,8 +5,8 @@ import React, {
   useContext,
   useState,
   useEffect,
-  useMemo, // 👈 Importado
-  useCallback, // 👈 Importado
+  useMemo,
+  useCallback,
 } from "react";
 import { createSPASassClient } from "@/lib/supabase/client";
 
@@ -21,11 +21,11 @@ interface GlobalContextType {
   loading: boolean;
   user: User | null;
   refreshUserProfile: () => Promise<void>;
+  isAuthenticated: boolean; // ✅ Nuevo: estado explícito de autenticación
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
 
-// Definimos el tipo esperado para el perfil
 type ProfileBalance = { credits_balance: number };
 
 export function GlobalProvider({
@@ -35,15 +35,24 @@ export function GlobalProvider({
 }) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false); // ✅ Nuevo estado
 
-  // 1. Usamos useCallback para estabilizar la función (dependency: [setLoading, setUser])
   const refreshUserProfile = useCallback(async () => {
     try {
+      setLoading(true);
       const supabase = createSPASassClient();
       const client = supabase.getSupabaseClient();
       const {
         data: { user: authUser },
+        error,
       } = await client.auth.getUser();
+
+      if (error) {
+        console.error("Error getting user:", error);
+        setUser(null);
+        setIsAuthenticated(false);
+        return;
+      }
 
       if (authUser) {
         // Obtener créditos
@@ -55,22 +64,27 @@ export function GlobalProvider({
 
         const profile = data as ProfileBalance | null;
 
-        setUser({
+        const userData = {
           email: authUser.email!,
           id: authUser.id,
           registered_at: new Date(authUser.created_at),
           credits_balance: profile?.credits_balance ?? 0,
-        });
+        };
+
+        setUser(userData);
+        setIsAuthenticated(true); // ✅ Establecer autenticación
       } else {
         setUser(null);
+        setIsAuthenticated(false); // ✅ Limpiar autenticación
       }
     } catch (error) {
       console.error("Error loading user profile:", error);
+      setUser(null);
+      setIsAuthenticated(false);
     } finally {
       setLoading(false);
     }
-    // Las funciones setX de useState son estables, pero se incluyen para satisfacer linters estrictos.
-  }, [setLoading, setUser]);
+  }, []);
 
   useEffect(() => {
     refreshUserProfile();
@@ -79,43 +93,45 @@ export function GlobalProvider({
       const supabase = createSPASassClient();
       const client = supabase.getSupabaseClient();
 
-      const subscription = client
-        .channel("user-profile-changes")
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "user_profiles",
-            filter: `id=eq.${user?.id}`,
-          },
-          () => {
-            // Refrescar el perfil cuando haya cambios
-            refreshUserProfile();
-          }
-        )
-        .subscribe();
+      // Solo configurar suscripción si hay usuario
+      const {
+        data: { user: authUser },
+      } = await client.auth.getUser();
 
-      return () => {
-        subscription.unsubscribe();
-      };
+      if (authUser) {
+        const subscription = client
+          .channel("user-profile-changes")
+          .on(
+            "postgres_changes",
+            {
+              event: "*",
+              schema: "public",
+              table: "user_profiles",
+              filter: `id=eq.${authUser.id}`,
+            },
+            () => {
+              refreshUserProfile();
+            }
+          )
+          .subscribe();
+
+        return () => {
+          subscription.unsubscribe();
+        };
+      }
     };
 
-    if (user?.id) {
-      // El linter de React debe estar satisfecho con [user?.id, refreshUserProfile]
-      // ya que refreshUserProfile es ahora estable.
-      setupSubscription();
-    }
-  }, [user?.id, refreshUserProfile]); // 👈 Añadido refreshUserProfile a dependencias
+    setupSubscription();
+  }, [refreshUserProfile]);
 
-  // 2. Usamos useMemo para estabilizar el objeto 'value' (Soluciona S6481)
   const contextValue = useMemo(
     () => ({
       loading,
       user,
+      isAuthenticated, // ✅ Incluir en el contexto
       refreshUserProfile,
     }),
-    [loading, user, refreshUserProfile]
+    [loading, user, isAuthenticated, refreshUserProfile]
   );
 
   return (

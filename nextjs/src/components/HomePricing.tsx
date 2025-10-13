@@ -13,7 +13,6 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-// Definición de tipos para el usuario (para DynamicCreditCard)
 type User = {
   email: string;
   id: string;
@@ -21,15 +20,12 @@ type User = {
   credits_balance: number;
 };
 
-// ====================================================================
-// Componente para el card dinámico de créditos (Corregido)
-// ====================================================================
-
 interface DynamicCreditCardProps {
   package: CreditPackage;
   onPurchase: (pkg: CreditPackage, credits: number) => void;
-  currentUser: User | null; // ✅ Nuevo: Estado de usuario
-  isGlobalLoading: boolean; // ✅ Nuevo: Estado de carga global
+  currentUser: User | null;
+  isGlobalLoading: boolean;
+  isAuthenticated: boolean; // ✅ Nuevo prop
 }
 
 const DynamicCreditCard = ({
@@ -37,11 +33,12 @@ const DynamicCreditCard = ({
   onPurchase,
   currentUser,
   isGlobalLoading,
+  isAuthenticated, // ✅ Recibir estado de autenticación
 }: DynamicCreditCardProps) => {
   const [credits, setCredits] = useState(() => pkg.min_credits || 20);
   const [isPurchasing, setIsPurchasing] = useState(false);
   const totalPrice = credits * (pkg.price_per_credit || 30);
-  const router = useRouter(); // Necesario para la redirección
+  const router = useRouter();
 
   const handleCreditsChange = (amount: number) => {
     setCredits((prevCredits) =>
@@ -54,8 +51,9 @@ const DynamicCreditCard = ({
 
     if (isGlobalLoading) return;
 
-    if (!currentUser) {
-      router.push("/auth/login"); // Redirige si no está autenticado
+    // ✅ Usar isAuthenticated en lugar de currentUser para verificación inmediata
+    if (!isAuthenticated) {
+      router.push("/auth/login");
       return;
     }
 
@@ -64,7 +62,28 @@ const DynamicCreditCard = ({
     onPurchase(pkg, credits);
   };
 
-  // Usamos 'button' en lugar de 'Link' para manejar la lógica onClick de forma condicional
+  // Determinar texto del botón basado en estados
+  const getButtonText = () => {
+    if (isGlobalLoading) {
+      return {
+        text: "Cargando...",
+        icon: <Loader2 className="w-5 h-5 animate-spin" />,
+      };
+    }
+    if (!isAuthenticated) {
+      return { text: "Iniciar Sesión / Registrarse", icon: null };
+    }
+    if (isPurchasing) {
+      return {
+        text: "Procesando...",
+        icon: <Loader2 className="w-5 h-5 animate-spin" />,
+      };
+    }
+    return { text: `Comprar ${credits} Créditos`, icon: null };
+  };
+
+  const buttonContent = getButtonText();
+
   return (
     <Card className="relative flex flex-col border-2 border-dashed border-gray-400 bg-gray-50">
       <CardHeader>
@@ -99,7 +118,6 @@ const DynamicCreditCard = ({
         </div>
 
         {/* Precio Total */}
-
         <div className="mb-6 text-center">
           <button onClick={handleButtonClick}>
             <span className="text-2xl font-bold">
@@ -128,21 +146,8 @@ const DynamicCreditCard = ({
           disabled={isPurchasing || isGlobalLoading}
           className="w-full text-center px-6 py-3 rounded-lg font-medium transition-colors bg-gray-50 hover:bg-gray-100 text-gray-900 flex items-center justify-center gap-2"
         >
-          {isGlobalLoading ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Cargando...
-            </>
-          ) : !currentUser ? (
-            "Iniciar Sesión / Registrarse"
-          ) : isPurchasing ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Procesando...
-            </>
-          ) : (
-            `Comprar ${credits} Créditos`
-          )}
+          {buttonContent.icon}
+          {buttonContent.text}
         </button>
       </CardContent>
     </Card>
@@ -150,31 +155,27 @@ const DynamicCreditCard = ({
 };
 
 // ====================================================================
-// Componente HomePricing (Corregido)
+// Componente HomePricing (Actualizado)
 // ====================================================================
 
 const HomePricing = () => {
   const { fixedPackages, customPackage, loading, error } = usePackages();
   const [purchasing, setPurchasing] = useState<string | null>(null);
-  // ✅ Renombrando 'loading' del contexto a 'globalLoading' para evitar conflicto.
-  const { user, loading: globalLoading } = useGlobal();
+  // ✅ Obtener isAuthenticated del contexto
+  const { user, loading: globalLoading, isAuthenticated } = useGlobal();
   const router = useRouter();
 
-  // ✅ Eliminamos la verificación de usuario AQUÍ
   async function handlePurchase(pkg: CreditPackage, customCredits?: number) {
     setPurchasing(pkg.id);
 
-    // Si no hay usuario, salimos de la función inmediatamente.
-    // La redirección ya se maneja en el onClick del botón.
-    if (!user) {
+    // ✅ Verificación redundante por seguridad
+    if (!isAuthenticated || !user) {
       setPurchasing(null);
+      router.push("/auth/login");
       return;
     }
 
     try {
-      // Ya sabemos que 'user' existe si llegamos aquí.
-
-      // Crear preferencia de pago
       const response = await fetch("/api/payments/create-preference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -191,7 +192,6 @@ const HomePricing = () => {
         throw new Error(data.error || "Error al crear preferencia");
       }
 
-      // Redirigir a Mercado Pago
       const checkoutUrl = data.sandbox_init_point || data.init_point;
       router.push(checkoutUrl);
     } catch (error) {
@@ -201,7 +201,26 @@ const HomePricing = () => {
     }
   }
 
-  // Features comunes (lógica sin cambios)
+  // Función auxiliar para determinar texto del botón
+  const getButtonText = (pkgId: string) => {
+    if (globalLoading) {
+      return {
+        text: "Cargando...",
+        icon: <Loader2 className="w-5 h-5 animate-spin" />,
+      };
+    }
+    if (!isAuthenticated) {
+      return { text: "Iniciar Sesión / Registrarse", icon: null };
+    }
+    if (purchasing === pkgId) {
+      return {
+        text: "Procesando...",
+        icon: <Loader2 className="w-5 h-5 animate-spin" />,
+      };
+    }
+    return { text: "Comprar", icon: null };
+  };
+
   const [commonFeatures, setCommonFeatures] = useState<string[]>([]);
 
   useEffect(() => {
@@ -212,8 +231,7 @@ const HomePricing = () => {
     );
   }, []);
 
-  // ----------------------------------------------------------------------
-  // ✅ 1. SOLUCIÓN AL ERROR DE HYDRATION: Esperar a que el Contexto Global cargue
+  // ✅ 1. SOLUCIÓN AL ERROR DE HYDRATION
   if (globalLoading) {
     return (
       <section id="pricing" className="py-24 bg-gray-100">
@@ -226,9 +244,7 @@ const HomePricing = () => {
       </section>
     );
   }
-  // ----------------------------------------------------------------------
 
-  // 2. Carga de paquetes (continúa con la lógica existente)
   if (loading) {
     return (
       <section id="pricing" className="py-24 bg-gray-100">
@@ -273,101 +289,91 @@ const HomePricing = () => {
 
         <div className="grid md:grid-cols-3 gap-8 mb-12">
           {/* Paquetes Fijos */}
-          {fixedPackages.map((pkg) => (
-            <Card
-              key={pkg.id}
-              className={`relative flex flex-col ${
-                pkg.is_popular ? "border-primary-500 shadow-lg border-2" : ""
-              }`}
-            >
-              {/* Popular badge */}
-              {pkg.is_popular && (
-                <div className="absolute top-0 right-0 -translate-y-1/2 px-3 py-1 bg-primary-500 text-white text-sm rounded-full">
-                  Más popular
-                </div>
-              )}
+          {fixedPackages.map((pkg) => {
+            const buttonContent = getButtonText(pkg.id);
 
-              {/* Make the entire card clickable */}
-              <button
-                onClick={() => {
-                  if (!user) {
-                    router.push("/auth/login");
-                  } else {
-                    handlePurchase(pkg);
-                  }
-                }}
-                disabled={purchasing === pkg.id || globalLoading}
-                className={`flex flex-col flex-grow focus:outline-none ${
-                  pkg.is_popular
-                    ? "hover:bg-primary-50/50 focus:bg-primary-50/50"
-                    : "hover:bg-gray-50 focus:bg-gray-50"
-                } transition-colors rounded-lg`}
-                aria-label={`Comprar paquete ${pkg.name}`}
+            return (
+              <Card
+                key={pkg.id}
+                className={`relative flex flex-col ${
+                  pkg.is_popular ? "border-primary-500 shadow-lg border-2" : ""
+                }`}
               >
-                <CardHeader>
-                  <CardTitle>{pkg.name}</CardTitle>
-                  <CardDescription>{pkg.description}</CardDescription>
-                </CardHeader>
+                {pkg.is_popular && (
+                  <div className="absolute top-0 right-0 -translate-y-1/2 px-3 py-1 bg-primary-500 text-white text-sm rounded-full">
+                    Más popular
+                  </div>
+                )}
 
-                <CardContent className="flex flex-col flex-grow">
-                  <div className="mb-6">
-                    <span className="text-4xl font-bold">
-                      ${pkg.price_mxn?.toFixed(2)}
-                    </span>
-                    <span className="text-gray-600 ml-2">MXN</span>
-                    <div className="text-sm text-gray-500 mt-1">
-                      {pkg.credits_amount}{" "}
-                      {pkg.credits_amount === 1 ? "crédito" : "créditos"}
+                <button
+                  onClick={() => {
+                    // ✅ Usar isAuthenticated para verificación inmediata
+                    if (!isAuthenticated) {
+                      router.push("/auth/login");
+                    } else {
+                      handlePurchase(pkg);
+                    }
+                  }}
+                  disabled={purchasing === pkg.id || globalLoading}
+                  className={`flex flex-col flex-grow focus:outline-none ${
+                    pkg.is_popular
+                      ? "hover:bg-primary-50/50 focus:bg-primary-50/50"
+                      : "hover:bg-gray-50 focus:bg-gray-50"
+                  } transition-colors rounded-lg`}
+                  aria-label={`Comprar paquete ${pkg.name}`}
+                >
+                  <CardHeader>
+                    <CardTitle>{pkg.name}</CardTitle>
+                    <CardDescription>{pkg.description}</CardDescription>
+                  </CardHeader>
+
+                  <CardContent className="flex flex-col flex-grow">
+                    <div className="mb-6">
+                      <span className="text-4xl font-bold">
+                        ${pkg.price_mxn?.toFixed(2)}
+                      </span>
+                      <span className="text-gray-600 ml-2">MXN</span>
+                      <div className="text-sm text-gray-500 mt-1">
+                        {pkg.credits_amount}{" "}
+                        {pkg.credits_amount === 1 ? "crédito" : "créditos"}
+                      </div>
                     </div>
-                  </div>
 
-                  <ul className="space-y-3 mb-8 flex-grow">
-                    {pkg.features &&
-                      Array.isArray(pkg.features) &&
-                      pkg.features.map((feature, i) => (
-                        <li key={i} className="flex items-center gap-2">
-                          <Check className="h-5 w-5 text-green-500" />
-                          <span className="text-gray-600">{feature}</span>
-                        </li>
-                      ))}
-                  </ul>
+                    <ul className="space-y-3 mb-8 flex-grow">
+                      {pkg.features &&
+                        Array.isArray(pkg.features) &&
+                        pkg.features.map((feature, i) => (
+                          <li key={i} className="flex items-center gap-2">
+                            <Check className="h-5 w-5 text-green-500" />
+                            <span className="text-gray-600">{feature}</span>
+                          </li>
+                        ))}
+                    </ul>
 
-                  {/* Button text at the bottom */}
-                  <div
-                    className={`w-full text-center px-6 py-3 font-medium flex items-center justify-center gap-2 ${
-                      pkg.is_popular
-                        ? "bg-primary-600 text-white"
-                        : "bg-gray-50 text-gray-900"
-                    } rounded-b-lg`}
-                  >
-                    {globalLoading ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Cargando...
-                      </>
-                    ) : !user ? (
-                      "Iniciar Sesión / Registrarse"
-                    ) : purchasing === pkg.id ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        Procesando...
-                      </>
-                    ) : (
-                      "Comprar"
-                    )}
-                  </div>
-                </CardContent>
-              </button>
-            </Card>
-          ))}
+                    <div
+                      className={`w-full text-center px-6 py-3 font-medium flex items-center justify-center gap-2 ${
+                        pkg.is_popular
+                          ? "bg-primary-600 text-white"
+                          : "bg-gray-50 text-gray-900"
+                      } rounded-b-lg`}
+                    >
+                      {buttonContent.icon}
+                      {buttonContent.text}
+                    </div>
+                  </CardContent>
+                </button>
+              </Card>
+            );
+          })}
 
           {/* Paquete Custom */}
           {customPackage && (
             <DynamicCreditCard
               package={customPackage}
               onPurchase={handlePurchase}
-              currentUser={user} // ✅ Pasamos el estado de usuario
-              isGlobalLoading={globalLoading} // ✅ Pasamos el estado de carga
+              currentUser={user}
+              isGlobalLoading={globalLoading}
+              isAuthenticated={isAuthenticated} // ✅ Pasar estado de autenticación
             />
           )}
         </div>
