@@ -1,7 +1,6 @@
 // src/app/app/layout.tsx
 import type { Metadata } from "next";
 import AppLayout from "@/components/AppLayout";
-import { GlobalProvider } from "@/lib/context/GlobalContext";
 
 export const metadata: Metadata = {
   title: {
