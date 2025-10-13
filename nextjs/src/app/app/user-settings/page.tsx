@@ -11,9 +11,8 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useGlobal } from "@/lib/context/GlobalContext";
 import { createSPASassClientAuthenticated } from "@/lib/supabase/client";
-import { Key, User, CheckCircle } from "lucide-react";
+import { Key, User, CheckCircle, CalendarDays } from "lucide-react";
 import { MFASetup } from "@/components/MFASetup";
-import { CalendarDays } from "lucide-react";
 
 export default function UserSettingsPage() {
   const { user } = useGlobal();

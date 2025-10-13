@@ -1,9 +1,8 @@
 // src/hooks/useVideoGeneration.ts
 import { useState, useCallback } from "react";
 import { VideoGeneration } from "@/types/database.types";
-import { User } from "@/lib/context/GlobalContext";
+import { User, useGlobal } from "@/lib/context/GlobalContext";
 import { processImageForVidu } from "@/lib/image-processor";
-import { useGlobal } from "@/lib/context/GlobalContext";
 
 interface UseVideoGenerationProps {
   user: User | null;
