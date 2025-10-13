@@ -31,7 +31,6 @@ interface DynamicCreditCardProps {
 const DynamicCreditCard = ({
   package: pkg,
   onPurchase,
-  currentUser,
   isGlobalLoading,
   isAuthenticated, // ✅ Recibir estado de autenticación
 }: DynamicCreditCardProps) => {
