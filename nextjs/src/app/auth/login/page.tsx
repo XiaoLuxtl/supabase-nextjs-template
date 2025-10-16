@@ -135,7 +135,7 @@ export default function LoginPage() {
       <SSOButtons onError={setError} />
 
       <div className="mt-6 text-center text-sm">
-        <span className="text-gray-600">Don&#39;t have an account?</span>{" "}
+        <span className="text-gray-600">¿No tienes una cuenta?</span>{" "}
         <Link
           href="/auth/register"
           className="font-medium text-primary-600 hover:text-primary-500"

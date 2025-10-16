@@ -153,15 +153,14 @@ export function useVideoGenerationData(
         console.log(`Subscription status: ${status}`, err || "");
 
         if (status === "SUBSCRIBED") {
-          console.log(`✅ Successfully subscribed to ${channelName}`);
+          console.log(`✅ Successfully subscribed`);
         } else if (status === "CHANNEL_ERROR" || status === "CLOSED") {
-          console.error(`❌ Subscription failed for ${channelName}:`, err);
           // Reintentar después de 5 segundos
           setTimeout(() => {
             if (isMounted.current && user) {
               setupRealtimeSubscription(user.id);
             }
-          }, 5000);
+          }, 30000);
         }
       });
 

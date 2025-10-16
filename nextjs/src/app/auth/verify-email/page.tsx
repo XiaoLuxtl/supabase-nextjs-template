@@ -1,3 +1,5 @@
+// src/app/auth/verify-email/page.tsx
+
 "use client";
 
 import { CheckCircle } from "lucide-react";
@@ -50,9 +52,22 @@ export default function VerifyEmailPage() {
         </h2>
 
         <p className="text-gray-600 mb-8">
-          Hemos enviado un correo electrónico con un enlace de verificación. Por
-          favor, revisa tu bandeja de entrada y haz clic en el enlace para
-          verificar tu cuenta.
+          Hemos procesado tu solicitud de cuenta.
+          <p>
+            <strong className="font-semibold">Si tu cuenta es nueva</strong>,
+            revisa tu bandeja de entrada y haz clic en el enlace para verificar.
+          </p>
+          <p>
+            <strong className="font-semibold">Si ya tenías una cuenta</strong>,
+            puedes simplemente{" "}
+            <Link
+              href="/auth/login"
+              className="text-primary-600 hover:underline"
+            >
+              iniciar sesión
+            </Link>
+          </p>
+          .
         </p>
 
         <div className="space-y-4">

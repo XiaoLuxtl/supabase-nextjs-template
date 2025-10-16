@@ -70,7 +70,6 @@ export default function VideoList({
               key={video.id}
               onClick={() => {
                 onSelectVideo(video);
-                console.log("Video selected:", video.id);
               }}
               className={`${
                 styles.videoItem
