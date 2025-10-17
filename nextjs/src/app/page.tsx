@@ -8,11 +8,11 @@ import { ArrowRight } from "lucide-react";
 
 // Importamos los componentes modulares
 import Navbar from "@/components/HomeNavbar";
-import AuthAwareButtons from "@/components/AuthAwareButtons";
 import HomePricing from "@/components/HomePricing";
 import HomeFooter from "@/components/HomeFooter";
 import HomeFeatures from "@/components/HomeFeatures";
 import HomeStats from "@/components/HomeStats";
+import HomeHero from "@/components/HomeHero";
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -44,25 +44,7 @@ export default function Home() {
 
       <div className="pt-16">
         {/* ======================= HERO SECTION ======================= */}
-        <section className="relative pt-16 pb-24 overflow-hidden">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center">
-              <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight text-white">
-                Revive Tus Memorias,
-                <span className="block text-emerald-500 drop-shadow-lg">
-                  Dales Vida en Video
-                </span>
-              </h1>
-              <p className="mt-6 text-lg sm:text-xl text-zinc-400 max-w-3xl mx-auto">
-                Utiliza nuestra IA para convertir en video tus fotos antiguas.
-                Da vida a tu pasado en segundos.
-              </p>
-              <div className="mt-10 flex gap-4 justify-center">
-                <AuthAwareButtons primaryStyle="bg-pink-500 hover:bg-pink-400 shadow-lg shadow-pink-500/50" />
-              </div>
-            </div>
-          </div>
-        </section>
+        <HomeHero />
 
         {/* ======================= STATS SECTION (Componente Separado) ======================= */}
         <HomeStats />

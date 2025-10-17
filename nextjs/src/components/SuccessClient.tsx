@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react"; // ✅ Importar useCallback
 import { useGlobal } from "@/lib/context/GlobalContext";
-import { useSearchParams, useRouter } from "next/navigation"; // ✅ Importar useRouter
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   CheckCircle,
@@ -21,33 +21,27 @@ interface ApiError extends Error {
 
 export const SuccessClient: React.FC = () => {
   const searchParams = useSearchParams();
-  const router = useRouter(); // ✅ Inicializar router
+  const router = useRouter();
   const [processing, setProcessing] = useState(true);
-  const { user, refreshUserProfile, isAuthenticated } = useGlobal(); // ✅ Usar isAuthenticated
+  const { user, refreshUserProfile, isAuthenticated } = useGlobal();
   const [error, setError] = useState<string | null>(null);
 
   // Bandera interna para saber si el componente ya intentó procesar el pago.
-  // Esto previene múltiples llamadas API si el componente se re-renderiza.
   const [hasProcessed, setHasProcessed] = useState(false);
 
-  useEffect(() => {
-    if (!hasProcessed) {
-      processPayment();
-      setHasProcessed(true); // Evitar reejecuciones accidentales
-    }
-  }, [hasProcessed]); // Dependencia actualizada
-
-  async function processPayment() {
+  // ✅ SOLUCIÓN AL WARNING DE DEPENDENCIA:
+  // 1. Envolver processPayment con useCallback para que sea estable.
+  // 2. Incluir todas sus dependencias externas.
+  const processPayment = useCallback(async () => {
     const paymentId = searchParams.get("payment_id");
     const externalReference = searchParams.get("external_reference");
     const status = searchParams.get("status");
 
     let apiCallAttempted = false;
-    let creditsWereApplied = false; // ✅ Nuevo: Bandera para la lógica de refresco
+    // let creditsWereApplied = false; // Se elimina, ya que no es necesaria para el control final
 
     // Si el pago no está aprobado o faltan referencias, solo refrescamos y terminamos
     if (!paymentId || !externalReference || status !== "approved") {
-      // Aunque no sea "approved", refrescamos para asegurar que el perfil está cargado
       await refreshUserProfile();
       setProcessing(false);
       return;
@@ -87,12 +81,8 @@ export const SuccessClient: React.FC = () => {
         ) as ApiError;
       }
 
-      console.log("Payment processed:", data);
-
-      if (data.credits_applied) {
-        // Marcamos que se aplicaron créditos
-        creditsWereApplied = true;
-      }
+      // La bandera creditsWereApplied ya no es necesaria aquí.
+      // El refreshUserProfile() en el finally garantiza la sincronización.
     } catch (err) {
       const error = err as ApiError;
       console.error("Error processing payment:", error);
@@ -100,20 +90,25 @@ export const SuccessClient: React.FC = () => {
         setError(error.message);
       }
     } finally {
-      // **SOLUCIÓN CRÍTICA DE SINCRONIZACIÓN:**
-      // Forzamos el refresco del perfil aquí para garantizar que:
-      // 1. Si los créditos se aplicaron, el estado global se actualice **antes** de setProcessing(false).
-      // 2. Si hubo un error que no interrumpió la sesión, el perfil se cargue.
-      // 3. La pantalla final se renderice con los datos más frescos.
+      // **PUNTO CRÍTICO DE SINCRONIZACIÓN:**
+      // Forzamos el refresco del perfil. Esto es lo que resuelve la visualización de 0 créditos.
       await refreshUserProfile();
 
       setProcessing(false);
     }
-  }
+  }, [searchParams, refreshUserProfile]); // ✅ Dependencias de useCallback
+
+  // ✅ SOLUCIÓN AL WARNING DE DEPENDENCIA:
+  // Se incluye processPayment en el array de dependencias.
+  useEffect(() => {
+    if (!hasProcessed) {
+      processPayment();
+      setHasProcessed(true); // Evitar reejecuciones accidentales
+    }
+  }, [hasProcessed, processPayment]);
 
   // Pantalla de carga (SIN CAMBIOS)
   if (processing) {
-    // ... (El código de la pantalla de carga se mantiene igual)
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center px-4">
         <div className="text-center">
@@ -127,20 +122,17 @@ export const SuccessClient: React.FC = () => {
     );
   }
 
-  // Manejo de SESIÓN PERDIDA:
-  // Si no estamos procesando, no hay error, y el usuario no está autenticado, redirigimos.
+  // Manejo de SESIÓN PERDIDA: (Lógica robusta)
   if (!isAuthenticated && !processing && !error) {
     console.warn(
       "Sesión perdida después de la redirección de pago. Redirigiendo a login."
     );
-    // Redirección con el path de éxito como destino para reintentar la carga del perfil
     router.replace("/login?redirect=/paquetes/success");
-    return null; // O un componente de carga mínima mientras redirige
+    return null;
   }
 
   // Pantalla de error (SIN CAMBIOS)
   if (error) {
-    // ... (El código de la pantalla de error se mantiene igual)
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center px-4">
         <div className="max-w-md w-full">
@@ -174,7 +166,7 @@ export const SuccessClient: React.FC = () => {
     );
   }
 
-  // Pantalla de éxito (MOSTRANDO EL SALDO GARANTIZADO)
+  // Pantalla de éxito
   return (
     <div className="min-h-screen bg-zinc-900 flex items-center justify-center px-4">
       <div className="max-w-md w-full">
@@ -189,19 +181,19 @@ export const SuccessClient: React.FC = () => {
           </p>
         </div>
 
-        {/* Credits Card - **AQUÍ ESTÁ LA SOLUCIÓN DEL DISPLAY** */}
+        {/* Credits Card */}
         <div className="bg-zinc-800 rounded-2xl p-6 border border-zinc-700 mb-6">
           <div className="flex items-center justify-between mb-4">
             <span className="text-zinc-400">Tus créditos disponibles:</span>
             <Sparkles className="w-5 h-5 text-pink-500" />
           </div>
-          {/* ✅ user ya debe estar cargado aquí gracias al bloque 'finally' */}
           <div className="text-4xl font-bold text-emerald-500">
+            {/* Si user es null (aunque la lógica de isAuthenticated debe prevenir esto), muestra 'Cargando...' */}
             {user?.credits_balance ?? "Cargando..."}
           </div>
         </div>
 
-        {/* Info y Actions (SIN CAMBIOS) */}
+        {/* Info y Actions */}
         <div className="bg-zinc-800/50 rounded-xl p-4 mb-6 border border-zinc-700/50">
           <p className="text-zinc-300 text-sm">
             Los créditos nunca expiran. Puedes usarlos cuando quieras para crear
