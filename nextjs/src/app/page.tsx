@@ -1,3 +1,4 @@
+// page.tsx (RESTAURADO)
 "use client";
 
 import React from "react";
@@ -35,18 +36,16 @@ export default function Home() {
   }, []);
   const productName = process.env.NEXT_PUBLIC_PRODUCTNAME || "PixelPages";
 
-  // El array 'stats' ha sido movido a HomeStats.jsx
-
   return (
     <div className="min-h-screen bg-zinc-900 text-white">
       {/* ======================= NAV BAR ======================= */}
       <Navbar />
 
       <div className="pt-16">
-        {/* ======================= HERO SECTION ======================= */}
+        {/* ======================= HERO SECTION (Todo incluido en HomeHero) ======================= */}
         <HomeHero />
 
-        {/* ======================= STATS SECTION (Componente Separado) ======================= */}
+        {/* ======================= STATS SECTION ======================= */}
         <HomeStats />
 
         {/* ======================= FEATURES SECTION ======================= */}

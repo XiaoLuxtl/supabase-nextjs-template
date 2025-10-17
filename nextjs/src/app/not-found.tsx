@@ -143,7 +143,7 @@ export default function NotFound() {
             className="flex items-center justify-center gap-2 w-full bg-pink-500 hover:bg-pink-600 text-white font-medium py-3 px-6 rounded-lg transition-colors shadow-lg shadow-pink-500/50"
             aria-label="Volver al estudio para animar un recuerdo"
           >
-            Animar este Recuerdo
+            Regresar a la App!
             <ArrowRight className="w-5 h-5" />
           </Link>
           <Link

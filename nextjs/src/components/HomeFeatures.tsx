@@ -2,6 +2,14 @@ import React from "react";
 import { Shield, Video, Image, Zap, Star, Database } from "lucide-react";
 
 const features = [
+  // Mover Generación de Video a la posición 1
+  {
+    icon: Video,
+    title: "Generación de Video Instantánea", // Titulo levemente mejorado
+    description:
+      "Convierte cualquier imagen fija o foto restaurada en un video dinámico, listo para redes sociales.",
+    color: "text-pink-400",
+  },
   {
     icon: Image,
     title: "Restauración Fotográfica Avanzada",
@@ -10,25 +18,19 @@ const features = [
     color: "text-emerald-400",
   },
   {
-    icon: Video,
-    title: "Generación de Video",
+    icon: Zap, // Mover la velocidad a los primeros 3 para impacto.
+    title: "Procesamiento Ultra Rápido",
     description:
-      "Convierte cualquier imagen fija o foto restaurada en un video dinámico, listo para redes sociales.",
+      "Genera videos sin largas esperas, gracias a nuestra infraestructura optimizada.",
     color: "text-pink-400",
   },
+  // Resto de features en el orden original
   {
     icon: Database,
     title: "Almacenamiento Seguro de Archivos",
     description:
       "Guarda videos generados con almacenamiento integrado y permisos de descarga.",
     color: "text-zinc-400",
-  },
-  {
-    icon: Zap,
-    title: "Procesamiento Ultra Rápido",
-    description:
-      "Genera videos sin largas esperas, gracias a nuestra infraestructura optimizada.",
-    color: "text-pink-400",
   },
   {
     icon: Star,

@@ -56,7 +56,7 @@ export default function AuthAwareButtons({
         <Link
           href="/auth/login"
           // Ajustado para el fondo oscuro de la Nav Bar (zinc-900)
-          className="text-zinc-300 hover:text-pink-500 transition-colors font-medium"
+          className="text-zinc-100 hover:text-pink-500 transition-colors font-medium"
         >
           Iniciar Sesión
         </Link>
@@ -101,7 +101,7 @@ export default function AuthAwareButtons({
       <Link
         href="#features"
         // Adaptamos el botón secundario a un estilo más oscuro y neutro (zinc)
-        className="hidden md:inline-flex items-center px-6 py-3 rounded-lg border-2 border-zinc-700 text-zinc-300 font-medium hover:bg-zinc-800 transition-colors shadow-md"
+        className="hidden md:inline-flex items-center px-6 py-3 rounded-lg border-2 border-zinc-700 text-stone-50 font-medium hover:bg-zinc-800 transition-colors shadow-md"
       >
         Leer Más
         <ChevronRight className="ml-2 h-5 w-5" />

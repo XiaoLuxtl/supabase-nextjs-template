@@ -31,12 +31,12 @@ export default function Navbar() {
           </div>
 
           {/* Menú de Escritorio (Oculto en Mobile) */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden p-2 md:flex items-center space-x-8">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="text-zinc-300 hover:text-pink-500 transition-colors text-sm font-medium"
+                className="text-zinc-100 hover:text-pink-500 transition-colors font-medium"
               >
                 {link.label}
               </Link>
@@ -73,7 +73,7 @@ export default function Navbar() {
                 href={link.href}
                 onClick={toggleMenu} // Cerrar el menú al hacer clic en un enlace
                 // Texto de tamaño base con padding mayor para fácil toque
-                className="block text-base font-medium text-zinc-300 hover:bg-zinc-800 hover:text-pink-500 p-3 rounded-lg transition-colors"
+                className="block text-base font-medium text-zinc-100 hover:bg-zinc-800 hover:text-pink-500 p-3 rounded-lg transition-colors"
               >
                 {link.label}
               </Link>

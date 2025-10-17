@@ -209,7 +209,7 @@ const HomePricing = () => {
       };
     }
     if (!isAuthenticated) {
-      return { text: "Iniciar Sesión / Registrarse", icon: null };
+      return { text: "Iniciar Sesión y Comprar", icon: null };
     }
     if (purchasing === pkgId) {
       return {
@@ -217,7 +217,7 @@ const HomePricing = () => {
         icon: <Loader2 className="w-5 h-5 animate-spin" />,
       };
     }
-    return { text: "Comprar", icon: null };
+    return { text: "Comprar Paquete", icon: null };
   };
 
   const [commonFeatures, setCommonFeatures] = useState<string[]>([]);
