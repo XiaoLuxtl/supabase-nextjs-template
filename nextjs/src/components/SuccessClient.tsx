@@ -42,6 +42,16 @@ export const SuccessClient: React.FC = () => {
 
     // Si el pago no está aprobado o faltan referencias, solo refrescamos y terminamos
     if (!paymentId || !externalReference || status !== "approved") {
+      // En desarrollo, si no hay parámetros de MP, mostrar botón para verificar estado
+      const isDevelopment = process.env.NODE_ENV === "development";
+      const mercadoPagoRedirected = paymentId && externalReference && status;
+
+      if (isDevelopment && !mercadoPagoRedirected) {
+        await refreshUserProfile();
+        setProcessing(false);
+        return;
+      }
+
       await refreshUserProfile();
       setProcessing(false);
       return;
@@ -200,6 +210,54 @@ export const SuccessClient: React.FC = () => {
             tus videos.
           </p>
         </div>
+
+        {/* Botón de verificación en desarrollo */}
+        {process.env.NODE_ENV === "development" &&
+          !searchParams.get("payment_id") && (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-6">
+              <p className="text-amber-300 text-sm mb-3">
+                En desarrollo: Mercado Pago no redirige automáticamente. Haz
+                clic para verificar y acreditar tus créditos.
+              </p>
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch(
+                      "/api/payments/check-pending",
+                      {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ user_id: user?.id }),
+                      }
+                    );
+
+                    const data = await response.json();
+
+                    if (data.success) {
+                      // Refrescar perfil para actualizar créditos
+                      await refreshUserProfile();
+                      alert(
+                        `¡Listo! Se procesaron ${data.processed} pagos pendientes.`
+                      );
+                      globalThis.location.reload();
+                    } else {
+                      alert(
+                        "Error al verificar pagos: " +
+                          (data.error || "Error desconocido")
+                      );
+                    }
+                  } catch (error) {
+                    console.error("Error checking pending payments:", error);
+                    alert("Error al verificar pagos. Inténtalo nuevamente.");
+                  }
+                }}
+                className="w-full bg-amber-500 hover:bg-amber-600 text-white font-medium py-3 px-6 rounded-lg transition-colors"
+              >
+                Verificar Estado de Pagos
+              </button>
+            </div>
+          )}
+
         <div className="space-y-3">
           <Link
             href="/app"

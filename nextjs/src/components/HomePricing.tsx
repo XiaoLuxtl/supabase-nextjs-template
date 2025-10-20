@@ -191,17 +191,12 @@ const HomePricing = () => {
         throw new Error(data.error || "Error al crear preferencia");
       }
 
-      // 🚨 La MEJOR FORMA de condicionarlo:
-      // 1. Define una variable de entorno (ej: NEXT_PUBLIC_MERCADOPAGO_ENV) en .env.development y .env.production.
-      // 2. Lee esa variable.
+      // Usar la lógica anterior que funcionaba: determinar en cliente basado en NEXT_PUBLIC_MERCADOPAGO_ENV
       const isDevEnv = process.env.NEXT_PUBLIC_MERCADOPAGO_ENV === "DEV";
-
-      // 3. Selecciona la URL de forma condicional:
       const checkoutUrl = isDevEnv
         ? data.sandbox_init_point // Usar Sandbox en DEV
         : data.init_point; // Usar Producción en PROD
 
-      // 4. Agrega una verificación de seguridad (aunque no debería ser necesaria con el token de prod/test correcto)
       if (!checkoutUrl) {
         throw new Error("URL de pago no generada correctamente.");
       }
