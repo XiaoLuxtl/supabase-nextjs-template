@@ -1,6 +1,7 @@
+// src/components/SuccessClient.tsx
 "use client";
 
-import { useEffect, useState, useCallback } from "react"; // ✅ Importar useCallback
+import { useEffect, useState, useCallback } from "react";
 import { useGlobal } from "@/lib/context/GlobalContext";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -12,7 +13,6 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-// Interface para errores de la API
 interface ApiError extends Error {
   message: string;
   status?: number;
@@ -25,42 +25,44 @@ export const SuccessClient: React.FC = () => {
   const [processing, setProcessing] = useState(true);
   const { user, refreshUserProfile, isAuthenticated } = useGlobal();
   const [error, setError] = useState<string | null>(null);
-
-  // Bandera interna para saber si el componente ya intentó procesar el pago.
   const [hasProcessed, setHasProcessed] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_RETRIES = 3;
 
-  // ✅ SOLUCIÓN AL WARNING DE DEPENDENCIA:
-  // 1. Envolver processPayment con useCallback para que sea estable.
-  // 2. Incluir todas sus dependencias externas.
   const processPayment = useCallback(async () => {
     const paymentId = searchParams.get("payment_id");
     const externalReference = searchParams.get("external_reference");
     const status = searchParams.get("status");
+    const collectionStatus = searchParams.get("collection_status");
 
-    let apiCallAttempted = false;
-    // let creditsWereApplied = false; // Se elimina, ya que no es necesaria para el control final
+    console.log("🔍 Processing payment with params:", {
+      paymentId,
+      externalReference,
+      status,
+      collectionStatus,
+    });
 
-    // Si el pago no está aprobado o faltan referencias, solo refrescamos y terminamos
-    if (!paymentId || !externalReference || status !== "approved") {
-      // En desarrollo, si no hay parámetros de MP, mostrar botón para verificar estado
-      const isDevelopment = process.env.NODE_ENV === "development";
-      const mercadoPagoRedirected = paymentId && externalReference && status;
+    // ✅ Si no hay payment_id, verificar si hay external_reference (fallback)
+    if (!paymentId && !externalReference) {
+      console.log("⚠️ No payment parameters found");
+      await refreshUserProfile();
+      setProcessing(false);
+      return;
+    }
 
-      if (isDevelopment && !mercadoPagoRedirected) {
-        await refreshUserProfile();
-        setProcessing(false);
-        return;
-      }
-
+    // ✅ Si el estado no es aprobado, refrescar y salir
+    if (status && status !== "approved" && collectionStatus !== "approved") {
+      console.log("⚠️ Payment not approved:", status || collectionStatus);
       await refreshUserProfile();
       setProcessing(false);
       return;
     }
 
     try {
-      apiCallAttempted = true;
+      console.log("📞 Calling process-payment API...");
 
-      const response = await fetch("/api/payments/process", {
+      // ✅ RUTA CORRECTA: /api/payments/process-payment
+      const response = await fetch("/api/payments/process-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -69,19 +71,21 @@ export const SuccessClient: React.FC = () => {
         }),
       });
 
-      const data = (await response.json()) as {
-        credits_applied?: boolean;
-        error?: string;
-        retryable?: boolean;
-      };
+      const data = await response.json();
+      console.log("📥 API Response:", data);
 
       if (!response.ok) {
-        if (data.retryable) {
-          // Lógica de reintento con recarga
+        // ✅ Si el pago no se encontró pero es retryable, reintentar
+        if (data.retryable && retryCount < MAX_RETRIES) {
+          console.log(`🔄 Retry ${retryCount + 1}/${MAX_RETRIES}...`);
+          setRetryCount((prev) => prev + 1);
+
+          // Esperar 3 segundos y reintentar
           await new Promise((resolve) => setTimeout(resolve, 3000));
-          window.location.reload();
+          await processPayment();
           return;
         }
+
         throw Object.assign(
           new Error(data.error || "Error procesando el pago"),
           {
@@ -91,33 +95,32 @@ export const SuccessClient: React.FC = () => {
         ) as ApiError;
       }
 
-      // La bandera creditsWereApplied ya no es necesaria aquí.
-      // El refreshUserProfile() en el finally garantiza la sincronización.
+      // ✅ Pago procesado exitosamente
+      console.log("✅ Payment processed successfully");
+
+      if (data.credits_applied) {
+        console.log("💰 Credits applied, new balance:", data.new_balance);
+      }
     } catch (err) {
       const error = err as ApiError;
-      console.error("Error processing payment:", error);
-      if (apiCallAttempted) {
-        setError(error.message);
-      }
+      console.error("❌ Error processing payment:", error);
+      setError(error.message);
     } finally {
-      // **PUNTO CRÍTICO DE SINCRONIZACIÓN:**
-      // Forzamos el refresco del perfil. Esto es lo que resuelve la visualización de 0 créditos.
+      // ✅ CRÍTICO: Siempre refrescar el perfil para sincronizar créditos
+      console.log("🔄 Refreshing user profile...");
       await refreshUserProfile();
-
       setProcessing(false);
     }
-  }, [searchParams, refreshUserProfile]); // ✅ Dependencias de useCallback
+  }, [searchParams, refreshUserProfile, retryCount]);
 
-  // ✅ SOLUCIÓN AL WARNING DE DEPENDENCIA:
-  // Se incluye processPayment en el array de dependencias.
   useEffect(() => {
     if (!hasProcessed) {
       processPayment();
-      setHasProcessed(true); // Evitar reejecuciones accidentales
+      setHasProcessed(true);
     }
   }, [hasProcessed, processPayment]);
 
-  // Pantalla de carga (SIN CAMBIOS)
+  // 🔄 Pantalla de carga
   if (processing) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center px-4">
@@ -125,23 +128,23 @@ export const SuccessClient: React.FC = () => {
           <Loader2 className="w-16 h-16 text-pink-500 animate-spin mx-auto mb-4" />
           <p className="text-white text-lg">Procesando tu pago...</p>
           <p className="text-zinc-400 text-sm mt-2">
-            Esto solo tomará unos segundos.
+            {retryCount > 0
+              ? `Reintento ${retryCount}/${MAX_RETRIES}...`
+              : "Esto solo tomará unos segundos."}
           </p>
         </div>
       </div>
     );
   }
 
-  // Manejo de SESIÓN PERDIDA: (Lógica robusta)
+  // 🔐 Manejo de sesión perdida
   if (!isAuthenticated && !processing && !error) {
-    console.warn(
-      "Sesión perdida después de la redirección de pago. Redirigiendo a login."
-    );
-    router.replace("/login?redirect=/paquetes/success");
+    console.warn("⚠️ Session lost, redirecting to login");
+    router.replace("/auth/login?redirect=/paquetes/success");
     return null;
   }
 
-  // Pantalla de error (SIN CAMBIOS)
+  // ❌ Pantalla de error
   if (error) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center px-4">
@@ -158,7 +161,12 @@ export const SuccessClient: React.FC = () => {
 
           <div className="space-y-3">
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                setError(null);
+                setHasProcessed(false);
+                setProcessing(true);
+                setRetryCount(0);
+              }}
               className="w-full bg-pink-500 hover:bg-pink-600 text-white font-medium py-3 px-6 rounded-lg transition-colors"
             >
               Reintentar
@@ -176,7 +184,7 @@ export const SuccessClient: React.FC = () => {
     );
   }
 
-  // Pantalla de éxito
+  // ✅ Pantalla de éxito
   return (
     <div className="min-h-screen bg-zinc-900 flex items-center justify-center px-4">
       <div className="max-w-md w-full">
@@ -198,12 +206,11 @@ export const SuccessClient: React.FC = () => {
             <Sparkles className="w-5 h-5 text-pink-500" />
           </div>
           <div className="text-4xl font-bold text-emerald-500">
-            {/* Si user es null (aunque la lógica de isAuthenticated debe prevenir esto), muestra 'Cargando...' */}
-            {user?.credits_balance ?? "Cargando..."}
+            {user?.credits_balance ?? 0}
           </div>
         </div>
 
-        {/* Info y Actions */}
+        {/* Info Card */}
         <div className="bg-zinc-800/50 rounded-xl p-4 mb-6 border border-zinc-700/50">
           <p className="text-zinc-300 text-sm">
             Los créditos nunca expiran. Puedes usarlos cuando quieras para crear
@@ -211,53 +218,63 @@ export const SuccessClient: React.FC = () => {
           </p>
         </div>
 
-        {/* Botón de verificación en desarrollo */}
+        {/* 🧪 Botón de verificación manual en desarrollo */}
         {process.env.NODE_ENV === "development" &&
           !searchParams.get("payment_id") && (
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-6">
               <p className="text-amber-300 text-sm mb-3">
-                En desarrollo: Mercado Pago no redirige automáticamente. Haz
-                clic para verificar y acreditar tus créditos.
+                <strong>Modo Desarrollo:</strong> Mercado Pago no redirige
+                automáticamente en localhost. Usa este botón para verificar y
+                acreditar pagos pendientes.
               </p>
               <button
                 onClick={async () => {
+                  if (!user?.id) {
+                    alert("Usuario no autenticado");
+                    return;
+                  }
+
                   try {
+                    console.log("🔍 Checking pending payments...");
                     const response = await fetch(
                       "/api/payments/check-pending",
                       {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ user_id: user?.id }),
+                        body: JSON.stringify({ user_id: user.id }),
                       }
                     );
 
                     const data = await response.json();
+                    console.log("📥 Check pending response:", data);
 
                     if (data.success) {
-                      // Refrescar perfil para actualizar créditos
                       await refreshUserProfile();
-                      alert(
-                        `¡Listo! Se procesaron ${data.processed} pagos pendientes.`
-                      );
-                      globalThis.location.reload();
+
+                      if (data.processed > 0) {
+                        alert(
+                          `✅ ¡Listo! Se procesaron ${data.processed} pagos pendientes.`
+                        );
+                        window.location.reload();
+                      } else {
+                        alert("ℹ️ No hay pagos pendientes para procesar.");
+                      }
                     } else {
-                      alert(
-                        "Error al verificar pagos: " +
-                          (data.error || "Error desconocido")
-                      );
+                      alert("❌ Error: " + (data.error || "Error desconocido"));
                     }
                   } catch (error) {
                     console.error("Error checking pending payments:", error);
-                    alert("Error al verificar pagos. Inténtalo nuevamente.");
+                    alert("❌ Error al verificar pagos. Inténtalo nuevamente.");
                   }
                 }}
                 className="w-full bg-amber-500 hover:bg-amber-600 text-white font-medium py-3 px-6 rounded-lg transition-colors"
               >
-                Verificar Estado de Pagos
+                🔍 Verificar Pagos Pendientes
               </button>
             </div>
           )}
 
+        {/* Action Buttons */}
         <div className="space-y-3">
           <Link
             href="/app"
@@ -288,7 +305,6 @@ export const SuccessClient: React.FC = () => {
   );
 };
 
-// Set displayName for React DevTools
 SuccessClient.displayName = "SuccessClient";
 
 export default SuccessClient;

@@ -116,18 +116,13 @@ export async function POST(request: NextRequest) {
           currency_id: "MXN",
         },
       ],
-      // Enviar back_urls siempre (funcionan en sandbox también)
       back_urls: {
         success: `${appUrl}/paquetes/success`,
         failure: `${appUrl}/paquetes/failure`,
-        pending: `${appUrl}/paquetes/success`,
+        pending: `${appUrl}/paquetes/pending`,
       },
-      // Solo enviar notification_url en producción (en desarrollo localhost no es accesible)
-      ...(process.env.NODE_ENV === "production"
-        ? {
-            notification_url: `${appUrl}/api/payments/webhook`,
-          }
-        : {}),
+      auto_return: "approved",
+      notification_url: `${appUrl}/api/payments/webhook`,
       external_reference: purchase.id, // ID de nuestra compra
       metadata: {
         purchase_id: purchase.id,
@@ -137,10 +132,6 @@ export async function POST(request: NextRequest) {
     };
 
     console.log("Success URL:", preferenceData.back_urls.success);
-    console.log(
-      "Notification URL:",
-      preferenceData.notification_url || "Not set (development mode)"
-    );
     console.log(
       "Full preference data:",
       JSON.stringify(preferenceData, null, 2)
@@ -154,21 +145,11 @@ export async function POST(request: NextRequest) {
       .update({ preference_id: mpPreference.id })
       .eq("id", purchase.id);
 
-    // Determinar qué URL usar basado en el entorno del servidor
-    const isProduction = process.env.NODE_ENV === "production";
-    const checkoutUrl = isProduction
-      ? mpPreference.init_point
-      : mpPreference.sandbox_init_point;
-
-    console.log("🌍 Environment:", process.env.NODE_ENV);
-    console.log("🔗 Using checkout URL:", checkoutUrl);
-
     return NextResponse.json({
       success: true,
       preference_id: mpPreference.id,
-      checkout_url: checkoutUrl, // URL correcta basada en el entorno
-      init_point: mpPreference.init_point,
-      sandbox_init_point: mpPreference.sandbox_init_point,
+      init_point: mpPreference.init_point, // URL para redirigir
+      sandbox_init_point: mpPreference.sandbox_init_point, // URL de sandbox (TEST)
     });
   } catch (error) {
     console.error("Error creating preference:", error);

@@ -1,3 +1,4 @@
+// src/app/api/payments/check-pending/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
@@ -13,10 +14,6 @@ const supabase = createClient(
   process.env.PRIVATE_SUPABASE_SERVICE_KEY!
 );
 
-/**
- * Endpoint para verificar pagos pendientes en desarrollo
- * Busca pagos con estado 'pending' para el usuario y los procesa
- */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -29,19 +26,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("Checking pending payments for user:", user_id);
+    console.log("🔍 Checking pending payments for user:", user_id);
 
-    // Buscar compras pendientes para este usuario
+    // Buscar compras pendientes (últimas 10)
     const { data: pendingPurchases, error: purchaseError } = await supabase
       .from("credit_purchases")
       .select("*")
       .eq("user_id", user_id)
       .eq("payment_status", "pending")
       .order("created_at", { ascending: false })
-      .limit(5); // Últimas 5 compras pendientes
+      .limit(10);
 
     if (purchaseError) {
-      console.error("Error fetching pending purchases:", purchaseError);
+      console.error("❌ Error fetching pending purchases:", purchaseError);
       return NextResponse.json(
         { error: "Error al buscar compras pendientes" },
         { status: 500 }
@@ -49,55 +46,78 @@ export async function POST(request: NextRequest) {
     }
 
     if (!pendingPurchases || pendingPurchases.length === 0) {
+      console.log("ℹ️ No pending purchases found");
       return NextResponse.json({
         success: true,
         message: "No hay compras pendientes",
         processed: 0,
+        checked: 0,
       });
     }
 
-    console.log(`Found ${pendingPurchases.length} pending purchases`);
+    console.log(`📋 Found ${pendingPurchases.length} pending purchases`);
 
     let processed = 0;
+    let checked = 0;
 
     // Procesar cada compra pendiente
     for (const purchase of pendingPurchases) {
+      checked++;
+
       try {
         console.log(
-          `Processing purchase ${purchase.id} with preference ${purchase.preference_id}`
+          `\n🔎 [${checked}/${pendingPurchases.length}] Processing purchase:`,
+          {
+            id: purchase.id,
+            preference_id: purchase.preference_id,
+            created_at: purchase.created_at,
+          }
         );
 
         // Si no tiene preference_id, saltar
         if (!purchase.preference_id) {
-          console.log(`Purchase ${purchase.id} has no preference_id, skipping`);
+          console.log("⚠️ No preference_id, skipping");
           continue;
         }
 
         // Buscar pagos asociados a esta preferencia
-        const paymentsResponse = await paymentClient.search({
-          options: {
-            preference_id: purchase.preference_id,
-          },
-        });
+        let payments: any[] = [];
 
-        const payments = paymentsResponse.results || [];
+        try {
+          const paymentsResponse = await paymentClient.search({
+            options: {
+              preference_id: purchase.preference_id,
+            },
+          });
+          payments = paymentsResponse.results || [];
+          console.log(`📥 Found ${payments.length} payments for preference`);
+        } catch (searchError: any) {
+          console.error("⚠️ Error searching payments:", searchError.message);
+
+          // En desarrollo, si no encontramos pagos, continuar
+          if (process.env.NODE_ENV === "development") {
+            console.log("🧪 DEV mode: Continuing despite search error");
+            continue;
+          }
+          throw searchError;
+        }
 
         if (payments.length === 0) {
-          console.log(
-            `No payments found for preference ${purchase.preference_id}`
-          );
+          console.log("ℹ️ No payments found for this preference");
           continue;
         }
 
         // Tomar el pago más reciente
         const payment = payments[0];
-        console.log(
-          `Found payment ${payment.id} with status ${payment.status}`
-        );
+        console.log(`💳 Latest payment:`, {
+          id: payment.id,
+          status: payment.status,
+          status_detail: payment.status_detail,
+        });
 
         // Si el pago está aprobado y no se ha aplicado aún
         if (payment.status === "approved" && !purchase.applied_at) {
-          console.log(`Applying credits for purchase ${purchase.id}`);
+          console.log("✅ Payment approved! Applying credits...");
 
           // Actualizar estado del pago
           await supabase
@@ -115,20 +135,17 @@ export async function POST(request: NextRequest) {
           );
 
           if (applyError) {
-            console.error(
-              `Error applying credits for purchase ${purchase.id}:`,
-              applyError
-            );
+            console.error(`❌ Error applying credits:`, applyError);
           } else {
-            console.log(
-              `Credits applied successfully for purchase ${purchase.id}`
-            );
+            console.log(`💰 Credits applied successfully!`);
             processed++;
           }
         } else if (
           payment.status === "rejected" ||
           payment.status === "cancelled"
         ) {
+          console.log(`❌ Payment ${payment.status}`);
+
           // Actualizar estado si fue rechazado
           await supabase
             .from("credit_purchases")
@@ -137,26 +154,33 @@ export async function POST(request: NextRequest) {
               payment_status: payment.status,
             })
             .eq("id", purchase.id);
-
-          console.log(
-            `Updated purchase ${purchase.id} status to ${payment.status}`
-          );
+        } else if (payment.status === "pending") {
+          console.log("⏳ Payment still pending");
+        } else {
+          console.log("ℹ️ Payment status:", payment.status);
         }
       } catch (error) {
-        console.error(`Error processing purchase ${purchase.id}:`, error);
+        console.error(`❌ Error processing purchase ${purchase.id}:`, error);
+        // Continuar con la siguiente compra
       }
     }
 
+    console.log(`\n✅ Finished checking. Processed: ${processed}/${checked}`);
+
     return NextResponse.json({
       success: true,
-      message: `Procesadas ${processed} compras pendientes`,
+      message: `Se verificaron ${checked} compras, ${processed} fueron procesadas`,
       processed,
+      checked,
       total_pending: pendingPurchases.length,
     });
   } catch (error) {
-    console.error("Error checking pending payments:", error);
+    console.error("❌ Error checking pending payments:", error);
     return NextResponse.json(
-      { error: "Error interno del servidor" },
+      {
+        error: "Error interno del servidor",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     );
   }
