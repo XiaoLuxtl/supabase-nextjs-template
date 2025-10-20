@@ -3,11 +3,13 @@
 import { useState, useEffect } from "react";
 // Asegúrate que esta ruta a tu cliente sea correcta
 import { createSPASassClient } from "@/lib/supabase/client";
+import { useGlobal } from "@/lib/context/GlobalContext";
 import { useRouter } from "next/navigation";
 import { CheckCircle, Key } from "lucide-react";
 import Link from "next/link"; // Asegúrate de tener Link importado si lo usas
 
 export default function ResetPasswordPage() {
+  const { sessionHealth, refreshUserProfile } = useGlobal();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -16,11 +18,38 @@ export default function ResetPasswordPage() {
   const [isSessionValid, setIsSessionValid] = useState(false); // Estado para controlar si puede escribir la nueva contraseña
   const router = useRouter();
 
+  // Función helper para hacer requests con retry
+  const fetchWithRetry = async <T,>(
+    operation: () => Promise<T>,
+    maxRetries = 2
+  ): Promise<T> => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (attempt < maxRetries) {
+          console.log(
+            `Password reset operation failed, retrying (${
+              attempt + 1
+            }/${maxRetries})`
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * (attempt + 1))
+          );
+          continue;
+        }
+        throw error;
+      }
+    }
+    // This should never be reached, but TypeScript needs it
+    throw new Error("Max retries exceeded");
+  };
+
   // 1. VERIFICACIÓN DE SESIÓN DE RECUPERACIÓN
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const supabaseWrapper = await createSPASassClient();
+        const supabaseWrapper = createSPASassClient();
         const supabase = supabaseWrapper.getSupabaseClient();
 
         // 🚨 CORRECCIÓN CLAVE: Usamos getSession() para detectar la sesión temporal
@@ -33,7 +62,7 @@ export default function ResetPasswordPage() {
 
         // Si no hay sesión, o si la sesión no es la que se espera para un reset,
         // no permitimos el cambio de contraseña.
-        if (!session) {
+        if (session === null) {
           setError(
             "Enlace inválido o expirado. Por favor, solicita un nuevo restablecimiento de contraseña."
           );
@@ -73,21 +102,31 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      const supabaseWrapper = await createSPASassClient();
-      const supabase = supabaseWrapper.getSupabaseClient();
-
-      // La sesión de recuperación debe estar activa para que esto funcione
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (error) {
-        // Manejo específico del error de Supabase
-        throw new Error(
-          error.message ||
-            "Error al actualizar la contraseña. La sesión pudo haber expirado."
+      // Validar health de la sesión antes de proceder
+      if (sessionHealth !== "healthy") {
+        console.warn(
+          "Session health check failed, attempting refresh before password update"
         );
+        await refreshUserProfile();
       }
+
+      await fetchWithRetry(async () => {
+        const supabaseWrapper = createSPASassClient();
+        const supabase = supabaseWrapper.getSupabaseClient();
+
+        // La sesión de recuperación debe estar activa para que esto funcione
+        const { error } = await supabase.auth.updateUser({
+          password: newPassword,
+        });
+
+        if (error) {
+          // Manejo específico del error de Supabase
+          throw new Error(
+            error.message ||
+              "Error al actualizar la contraseña. La sesión pudo haber expirado."
+          );
+        }
+      });
 
       setSuccess(true);
       // Redirigir al login después de un breve tiempo

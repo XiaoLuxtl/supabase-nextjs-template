@@ -1,10 +1,14 @@
 -- ============================================
--- MIGRACIÓN: Sistema de Créditos Mejorado
--- Ejecutar en Supabase SQL Editor
+-- MIGRACIÓN: Refactor para Single Source of Truth en Créditos
+-- Fecha: 2025-10-19
 -- ============================================
 
--- Función mejorada para registrar transacciones de créditos
--- Compatible con la estructura existente de credit_transactions
+-- Eliminar funciones existentes para evitar conflictos de tipo de retorno
+DROP FUNCTION IF EXISTS consume_credit_for_video(UUID, UUID);
+DROP FUNCTION IF EXISTS apply_credit_purchase(UUID);
+DROP FUNCTION IF EXISTS refund_credits_for_video(UUID);
+
+-- Función consolidada para logging de transacciones de créditos
 CREATE OR REPLACE FUNCTION log_credit_transaction(
   p_user_id UUID,
   p_amount INTEGER,
@@ -38,7 +42,7 @@ BEGIN
       updated_at = NOW()
   WHERE id = p_user_id;
 
-  -- Registrar transacción usando la estructura existente
+  -- Registrar transacción
   INSERT INTO credit_transactions (
     user_id,
     amount,
@@ -61,21 +65,21 @@ BEGIN
 END;
 $$;
 
--- Función mejorada para consumir créditos con logging automático
-CREATE OR REPLACE FUNCTION consume_credit_for_video(
+-- Función para consumir créditos por video
+CREATE FUNCTION consume_credit_for_video(
   p_user_id UUID,
   p_video_id UUID
 )
-RETURNS BOOLEAN
+RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_balance INTEGER;
-  v_cost INTEGER := 1; -- Costo por defecto de 1 crédito por video
+  v_new_balance INTEGER;
+  v_cost INTEGER := 1;
 BEGIN
-  -- Obtener balance actual
-  SELECT credits_balance INTO v_balance
+  -- Verificar balance
+  SELECT credits_balance INTO v_new_balance
   FROM user_profiles
   WHERE id = p_user_id;
 
@@ -83,39 +87,36 @@ BEGIN
     RAISE EXCEPTION 'User not found';
   END IF;
 
-  IF v_balance < v_cost THEN
+  IF v_new_balance < v_cost THEN
     RAISE EXCEPTION 'Insufficient credits';
   END IF;
 
-  -- Registrar consumo usando la función de logging
-  PERFORM log_credit_transaction(
+  -- Consumir y obtener nuevo balance
+  SELECT log_credit_transaction(
     p_user_id,
     -v_cost,
     'video_generation',
-    NULL, -- purchase_id
-    p_video_id, -- video_id
+    NULL,
+    p_video_id,
     'Video generation cost'
-  );
+  ) INTO v_new_balance;
 
-  RETURN TRUE;
-EXCEPTION
-  WHEN OTHERS THEN
-    RETURN FALSE;
+  RETURN v_new_balance;
 END;
 $$;
 
--- Función mejorada para aplicar compras de créditos con logging automático
-CREATE OR REPLACE FUNCTION apply_credit_purchase(
+-- Función para aplicar compras de créditos
+CREATE FUNCTION apply_credit_purchase(
   p_purchase_id UUID
 )
-RETURNS BOOLEAN
+RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
   v_purchase RECORD;
+  v_new_balance INTEGER;
 BEGIN
-  -- Obtener datos de la compra
   SELECT * INTO v_purchase
   FROM credit_purchases
   WHERE id = p_purchase_id AND payment_status = 'approved';
@@ -124,46 +125,45 @@ BEGIN
     RAISE EXCEPTION 'Purchase not found or not approved';
   END IF;
 
-  -- Verificar que no haya sido aplicada ya
   IF v_purchase.applied_at IS NOT NULL THEN
-    RETURN TRUE; -- Ya fue aplicada, retornar éxito
+    -- Ya aplicado, devolver balance actual
+    SELECT credits_balance INTO v_new_balance
+    FROM user_profiles
+    WHERE id = v_purchase.user_id;
+    RETURN v_new_balance;
   END IF;
 
-  -- Marcar como aplicada
   UPDATE credit_purchases
   SET applied_at = NOW()
   WHERE id = p_purchase_id;
 
-  -- Registrar créditos usando la función de logging
-  PERFORM log_credit_transaction(
+  -- Registrar transacción y obtener nuevo balance
+  SELECT log_credit_transaction(
     v_purchase.user_id,
     v_purchase.credits_amount,
     'purchase',
-    p_purchase_id, -- purchase_id
-    NULL, -- video_id
+    p_purchase_id,
+    NULL,
     'Credit purchase: ' || v_purchase.package_name
-  );
+  ) INTO v_new_balance;
 
-  RETURN TRUE;
-EXCEPTION
-  WHEN OTHERS THEN
-    RETURN FALSE;
+  RETURN v_new_balance;
 END;
 $$;
 
--- Función mejorada para reembolsar créditos por videos fallidos
-CREATE OR REPLACE FUNCTION refund_credits_for_video(
+-- Función para reembolsar créditos por videos fallidos
+CREATE FUNCTION refund_credits_for_video(
   p_video_id UUID
 )
-RETURNS BOOLEAN
+RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
   v_video RECORD;
   v_refund_amount INTEGER;
+  v_new_balance INTEGER;
 BEGIN
-  -- Obtener datos del video
   SELECT * INTO v_video
   FROM video_generations
   WHERE id = p_video_id AND status = 'failed';
@@ -172,34 +172,61 @@ BEGIN
     RAISE EXCEPTION 'Video generation not found or not failed';
   END IF;
 
-  -- Verificar que no haya sido reembolsado ya
   IF EXISTS (
     SELECT 1 FROM credit_transactions
     WHERE video_id = p_video_id AND transaction_type = 'refund'
   ) THEN
-    RETURN TRUE; -- Ya fue reembolsado
+    -- Ya reembolsado, devolver balance actual
+    SELECT credits_balance INTO v_new_balance
+    FROM user_profiles
+    WHERE id = v_video.user_id;
+    RETURN v_new_balance;
   END IF;
 
   v_refund_amount := COALESCE(v_video.credits_used, 1);
 
-  -- Registrar reembolso usando la función de logging
-  PERFORM log_credit_transaction(
+  -- Reembolsar y obtener nuevo balance
+  SELECT log_credit_transaction(
     v_video.user_id,
     v_refund_amount,
     'refund',
-    NULL, -- purchase_id
-    p_video_id, -- video_id
+    NULL,
+    p_video_id,
     'Refund for failed video generation'
-  );
+  ) INTO v_new_balance;
 
-  RETURN TRUE;
-EXCEPTION
-  WHEN OTHERS THEN
-    RETURN FALSE;
+  RETURN v_new_balance;
 END;
 $$;
 
--- Verificar que las funciones se crearon correctamente
+-- Trigger para asegurar consistencia: prevenir updates directos a credits_balance
+-- Solo permitir updates desde funciones SECURITY DEFINER
+CREATE OR REPLACE FUNCTION check_credit_balance_update()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Si el update viene de una función SECURITY DEFINER, permitir
+  IF current_setting('request.jwt.claim.role', true) = 'service_role' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Para otros casos, verificar si es un update legítimo
+  -- Por ahora, permitir pero loggear
+  RAISE NOTICE 'Direct update to credits_balance detected for user %', NEW.id;
+
+  RETURN NEW;
+END;
+$$;
+
+-- Crear trigger (comentado por ahora, activar si es necesario)
+-- CREATE TRIGGER credit_balance_update_trigger
+--   BEFORE UPDATE OF credits_balance ON user_profiles
+--   FOR EACH ROW
+--   EXECUTE FUNCTION check_credit_balance_update();
+
+-- Verificar funciones
 SELECT
   proname as function_name,
   pg_get_function_identity_arguments(oid) as arguments

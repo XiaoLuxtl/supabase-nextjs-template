@@ -13,20 +13,47 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
+  // Función helper para hacer requests con retry
+  const fetchWithRetry = async <T,>(
+    operation: () => Promise<T>,
+    maxRetries = 2
+  ): Promise<T> => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (attempt < maxRetries) {
+          console.log(
+            `Auth operation failed, retrying (${attempt + 1}/${maxRetries})`
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * (attempt + 1))
+          );
+          continue;
+        }
+        throw error;
+      }
+    }
+    // This should never be reached, but TypeScript needs it
+    throw new Error("Max retries exceeded");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const supabase = await createSPASassClient();
-      const { error } = await supabase
-        .getSupabaseClient()
-        .auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth/reset-password`,
-        });
+      await fetchWithRetry(async () => {
+        const supabase = createSPASassClient();
+        const { error } = await supabase
+          .getSupabaseClient()
+          .auth.resetPasswordForEmail(email, {
+            redirectTo: `${globalThis.location.origin}/auth/reset-password`,
+          });
 
-      if (error) throw error;
+        if (error) throw error;
+      });
 
       setSuccess(true);
     } catch (err) {

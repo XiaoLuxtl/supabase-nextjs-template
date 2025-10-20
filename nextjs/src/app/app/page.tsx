@@ -13,9 +13,11 @@ import { VideoPlayerMain } from "@/components/VideoPlayerMain";
 import { VideoPlayerMobile } from "@/components/VideoPlayerMobile";
 import { ArrowDownToLine, Loader2 } from "lucide-react";
 import { useCredits } from "@/hooks/useCredits";
+import { useGlobal } from "@/lib/context/GlobalContext";
 
 export default function VideoGeneratorUI() {
   const { user } = useCredits();
+  const { loading: authLoading, initialized } = useGlobal();
   const [selectedVideo, setSelectedVideo] = useState<VideoGeneration | null>(
     null
   );
@@ -23,10 +25,14 @@ export default function VideoGeneratorUI() {
 
   const sliderRef = useDragScroll();
 
-  const { videos, setVideos, loading } = useVideoGenerationData(
-    selectedVideo,
-    setSelectedVideo
-  );
+  const {
+    videos,
+    setVideos,
+    loading: videosLoading,
+  } = useVideoGenerationData(selectedVideo, setSelectedVideo);
+
+  // Loading combinado: autenticación + datos de videos
+  const loading = authLoading || (initialized && videosLoading);
 
   const {
     selectedFile,

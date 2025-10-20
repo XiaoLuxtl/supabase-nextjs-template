@@ -1,5 +1,9 @@
--- La tabla credit_transactions ya existe con la estructura correcta
--- Solo necesitamos mejorar las funciones RPC existentes
+-- ============================================
+-- MIGRACIÓN: Sistema de Créditos Mejorado (Versión Original)
+-- Esta es la versión original de nextjs/supabase-migration.sql
+-- Las funciones ya están aplicadas y actualizadas en la migración 20251019180508
+-- Mantener para referencia histórica - NO EJECUTAR
+-- ============================================
 
 -- Función mejorada para registrar transacciones de créditos
 -- Compatible con la estructura existente de credit_transactions
@@ -196,3 +200,16 @@ EXCEPTION
     RETURN FALSE;
 END;
 $$;
+
+-- Verificar que las funciones se crearon correctamente
+SELECT
+  proname as function_name,
+  pg_get_function_identity_arguments(oid) as arguments
+FROM pg_proc
+WHERE proname IN (
+  'log_credit_transaction',
+  'consume_credit_for_video',
+  'apply_credit_purchase',
+  'refund_credits_for_video'
+)
+ORDER BY proname;

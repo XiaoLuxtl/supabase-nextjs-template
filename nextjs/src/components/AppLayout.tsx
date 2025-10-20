@@ -14,7 +14,6 @@ import {
   ChevronFirst,
 } from "lucide-react";
 import { useGlobal } from "@/lib/context/GlobalContext";
-import { createSPASassClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 export default function AppLayout({ children }: React.PropsWithChildren) {
@@ -23,20 +22,64 @@ export default function AppLayout({ children }: React.PropsWithChildren) {
   const [isUserDropdownOpen, setUserDropdownOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useGlobal();
+  const { user, forceLogout, initialized, isAuthenticated, loading } =
+    useGlobal();
+
+  // Redirigir automáticamente si no hay usuario autenticado
+  useEffect(() => {
+    if (initialized && !isAuthenticated) {
+      console.log("🔒 No authenticated user, redirecting to login");
+      router.push("/auth/login");
+    }
+  }, [initialized, isAuthenticated, router]);
+
+  // Manejar clics fuera del dropdown de usuario
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isUserDropdownOpen) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('[data-dropdown="user-menu"]')) {
+          setUserDropdownOpen(false);
+        }
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isUserDropdownOpen]);
+
+  // Mostrar loading mientras se inicializa la autenticación
+  if (!initialized || loading) {
+    return (
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mx-auto mb-4"></div>
+          <p className="text-zinc-400">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirigir si no está autenticado (fallback)
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500 mx-auto mb-4"></div>
+          <p className="text-zinc-400">Redirigiendo...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleLogout = async () => {
     try {
-      const clientWrapper = createSPASassClient();
-      // CORRECCIÓN: La función 'logout' no existe en el wrapper (SassClient).
-      // Se debe acceder al cliente Supabase real usando getSupabaseClient()
-      // y llamar a 'auth.signOut()'.
-      await clientWrapper.getSupabaseClient().auth.signOut();
-
-      // Redirigir al usuario al inicio de sesión después de cerrar sesión
+      await forceLogout();
       router.push("/auth/login");
     } catch (error) {
       console.error("Error logging out:", error);
+      // Fallback: forzar recarga de página
+      globalThis.location.href = "/auth/login";
     }
   };
 
@@ -62,21 +105,7 @@ export default function AppLayout({ children }: React.PropsWithChildren) {
     },
   ];
 
-  const toggleSidebar = () => setSidebarOpen(!isSidebarOpen); // Cerrar el menú de usuario al hacer clic fuera
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (isUserDropdownOpen) {
-        const target = event.target as HTMLElement;
-        if (!target.closest('[data-dropdown="user-menu"]')) {
-          setUserDropdownOpen(false);
-        }
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isUserDropdownOpen]);
+  const toggleSidebar = () => setSidebarOpen(!isSidebarOpen);
 
   return (
     <div className="min-h-screen bg-gray-100">

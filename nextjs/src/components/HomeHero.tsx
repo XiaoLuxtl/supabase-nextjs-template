@@ -335,7 +335,7 @@ export default function HomeHero() {
 
       {/* -------------------- CONTENIDO PRINCIPAL -------------------- */}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-50 text-center pt-24 md:pt-32 pb-24">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-40 text-center pt-24 md:pt-32 pb-24">
         <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight text-white max-w-5xl mx-auto drop-shadow-xl">
           <span className="text-pink-400">Regístrate</span> y Comienza a Generar
           Videos ¡Ya!

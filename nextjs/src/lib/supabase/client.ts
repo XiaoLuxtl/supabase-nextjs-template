@@ -8,28 +8,50 @@ import {
 } from "@/lib/supabase/unified";
 
 let cachedClient: GenericSupabaseClient | null = null;
+let clientCreationTime = 0;
+const CLIENT_TTL = 30 * 60 * 1000; // 30 minutos
 
 const createSupabaseBrowserClient = () =>
   createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      auth: { persistSession: true },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
       realtime: {
         params: {
-          eventsPerSecond: 10, // Límite razonable
-          maxBytesPerSecond: 1024 * 100, // 100 KB/s
+          eventsPerSecond: 10,
+          maxBytesPerSecond: 1024 * 100,
         },
       },
     }
   );
 
+// Función para verificar si el cliente necesita ser recreado
+const shouldRecreateClient = (): boolean => {
+  const now = Date.now();
+  return !cachedClient || now - clientCreationTime > CLIENT_TTL;
+};
+
 export function createSPAClient(): GenericSupabaseClient {
-  if (cachedClient) {
-    return cachedClient;
+  if (shouldRecreateClient()) {
+    console.log("🔄 Creating new Supabase client");
+    cachedClient =
+      createSupabaseBrowserClient() as unknown as GenericSupabaseClient;
+    clientCreationTime = Date.now();
   }
+  return cachedClient!;
+}
+
+// Función para forzar recreación del cliente (útil para recovery)
+export function recreateSPAClient(): GenericSupabaseClient {
+  console.log("🔄 Force recreating Supabase client");
   cachedClient =
     createSupabaseBrowserClient() as unknown as GenericSupabaseClient;
+  clientCreationTime = Date.now();
   return cachedClient;
 }
 
@@ -44,11 +66,11 @@ export async function createSPASassClientAuthenticated(): Promise<{
 }> {
   const client = createSPAClient();
   const { data: session } = await client.auth.getSession();
-  if (!session || !session.session) {
+  if (!session?.session) {
     console.warn("Usuario no autenticado, se requiere redirección.");
   }
   return {
     client: new SassClient(client, ClientType.SPA),
-    isAuthenticated: !!(session && session.session),
+    isAuthenticated: !!session?.session,
   };
 }

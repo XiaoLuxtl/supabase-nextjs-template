@@ -13,7 +13,6 @@ import Link from "next/link";
 import ImageUpload from "@/components/ImageUpload";
 import { DropzoneRootProps, DropzoneInputProps } from "react-dropzone";
 import { useCredits } from "@/hooks/useCredits";
-import { CreditStatus } from "@/components/CreditBalance";
 
 interface VideoGeneratorFormProps {
   isGenerating: boolean;
@@ -42,7 +41,7 @@ export const VideoGeneratorForm: React.FC<VideoGeneratorFormProps> = React.memo(
     getInputProps,
     isDragActive,
   }) => {
-    const { balance, hasCredits, canAfford } = useCredits();
+    const { balance, hasCredits } = useCredits();
     const isFormDisabled = !hasCredits || isGenerating;
 
     return (

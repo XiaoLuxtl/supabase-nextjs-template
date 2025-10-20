@@ -15,33 +15,59 @@ export default function LoginPage() {
   const [showMFAPrompt, setShowMFAPrompt] = useState(false);
   const router = useRouter();
 
+  // Función helper para hacer requests con retry
+  const fetchWithRetry = async <T,>(
+    operation: () => Promise<T>,
+    maxRetries = 2
+  ): Promise<T> => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (attempt < maxRetries) {
+          console.log(
+            `Login operation failed, retrying (${attempt + 1}/${maxRetries})`
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, 1000 * (attempt + 1))
+          );
+          continue;
+        }
+        throw error;
+      }
+    }
+    // This should never be reached, but TypeScript needs it
+    throw new Error("Max retries exceeded");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const client = await createSPASassClient();
-      const { error: signInError } = await client.loginEmail(email, password);
+      await fetchWithRetry(async () => {
+        const client = createSPASassClient();
+        const { error: signInError } = await client.loginEmail(email, password);
 
-      if (signInError) throw signInError;
+        if (signInError) throw signInError;
 
-      // Check if MFA is required
-      const supabase = client.getSupabaseClient();
-      const { data: mfaData, error: mfaError } =
-        await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        // Check if MFA is required
+        const supabase = client.getSupabaseClient();
+        const { data: mfaData, error: mfaError } =
+          await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
 
-      if (mfaError) throw mfaError;
+        if (mfaError) throw mfaError;
 
-      if (
-        mfaData.nextLevel === "aal2" &&
-        mfaData.nextLevel !== mfaData.currentLevel
-      ) {
-        setShowMFAPrompt(true);
-      } else {
-        router.push("/app");
-        return;
-      }
+        if (
+          mfaData.nextLevel === "aal2" &&
+          mfaData.nextLevel !== mfaData.currentLevel
+        ) {
+          setShowMFAPrompt(true);
+        } else {
+          router.push("/app");
+        }
+      });
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);

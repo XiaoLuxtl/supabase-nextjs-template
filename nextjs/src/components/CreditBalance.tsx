@@ -9,7 +9,7 @@ interface CreditBalanceProps {
   showIcon?: boolean;
   showLabel?: boolean;
   className?: string;
-  variant?: "default" | "compact" | "badge";
+  variant?: "default" | "compact" | "badge" | "centered";
   onClick?: () => void;
 }
 
@@ -20,15 +20,17 @@ export function CreditBalance({
   variant = "default",
   onClick,
 }: CreditBalanceProps) {
-  const { balance, loading, hasCredits, getCreditsDisplay } = useCredits();
+  const { balance, loading, getCreditsDisplay } = useCredits();
 
-  const baseClasses = "flex items-center gap-2 transition-colors";
+  const baseClasses =
+    "flex items-center justify-center gap-2 transition-colors";
 
   const variantClasses = {
     default: "text-emerald-500",
     compact: "text-sm text-emerald-600",
     badge:
-      "bg-emerald-500/20 border border-emerald-500 rounded-full px-3 py-1 text-emerald-600",
+      "bg-emerald-500/20 border border-emerald-500 rounded-full px-3 py-1 text-emerald-600 text-center",
+    centered: "text-emerald-500 text-center w-auto mx-auto",
   };
 
   const classes = `${baseClasses} ${variantClasses[variant]} ${className}`;
@@ -42,22 +44,47 @@ export function CreditBalance({
     );
   }
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (onClick && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
+  if (onClick) {
+    return (
+      <button
+        className={`${classes} cursor-pointer hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 rounded-md`}
+        onClick={onClick}
+        onKeyDown={handleKeyDown}
+        type="button"
+      >
+        {showIcon && <CreditCard className="h-4 w-4 flex-shrink-0" />}
+        {showLabel && <span className="whitespace-nowrap">Créditos:</span>}
+        <span className="font-semibold whitespace-nowrap">
+          {getCreditsDisplay(balance)}
+        </span>
+      </button>
+    );
+  }
+
   return (
-    <div
-      className={`${classes} ${
-        onClick ? "cursor-pointer hover:opacity-80" : ""
-      }`}
-      onClick={onClick}
-    >
-      {showIcon && <CreditCard className="h-4 w-4" />}
-      {showLabel && <span>Créditos:</span>}
-      <span className="font-semibold">{getCreditsDisplay(balance)}</span>
+    <div className={classes}>
+      {showIcon && <CreditCard className="h-4 w-4 flex-shrink-0" />}
+      {showLabel && <span className="whitespace-nowrap">Créditos:</span>}
+      <span className="font-semibold whitespace-nowrap">
+        {getCreditsDisplay(balance)}
+      </span>
     </div>
   );
 }
 
 // Componente específico para mostrar balance en header/navbar
-export function CreditBalanceHeader({ onClick }: { onClick?: () => void }) {
+export function CreditBalanceHeader({
+  onClick,
+}: {
+  readonly onClick?: () => void;
+}) {
   return (
     <CreditBalance
       variant="badge"
@@ -69,7 +96,7 @@ export function CreditBalanceHeader({ onClick }: { onClick?: () => void }) {
 }
 
 // Componente para mostrar si puede generar videos
-export function CreditStatus({ cost = 1 }: { cost?: number }) {
+export function CreditStatus({ cost = 1 }: { readonly cost?: number }) {
   const { canAfford, hasCredits, balance } = useCredits();
 
   if (!hasCredits) {

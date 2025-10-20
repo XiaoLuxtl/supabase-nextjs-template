@@ -1,4 +1,7 @@
-// src/lib/creditsService.ts
+// src/lib/creditsService.ts - SERVER ONLY
+// ⚠️  This service should only be used in API routes (server-side)
+// It uses the service key which should never be exposed to the client
+
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -33,21 +36,15 @@ export class CreditsService {
     videoId: string
   ): Promise<{ success: boolean; newBalance: number }> {
     try {
-      // Verificar balance actual
-      const currentBalance = await this.getBalance(userId);
-      if (currentBalance < 1) {
-        return { success: false, newBalance: currentBalance };
-      }
-
-      // Consumir créditos usando la función RPC existente
-      const { data, error } = await supabase.rpc("consume_credit_for_video", {
+      // Consumir créditos usando la función RPC mejorada
+      const { error } = await supabase.rpc("consume_credit_for_video", {
         p_user_id: userId,
         p_video_id: videoId,
       });
 
       if (error) {
         console.error("Error consuming credits:", error);
-        return { success: false, newBalance: currentBalance };
+        return { success: false, newBalance: await this.getBalance(userId) };
       }
 
       const newBalance = await this.getBalance(userId);
@@ -65,7 +62,7 @@ export class CreditsService {
     purchaseId: string
   ): Promise<{ success: boolean; newBalance: number }> {
     try {
-      const { data, error } = await supabase.rpc("apply_credit_purchase", {
+      const { error } = await supabase.rpc("apply_credit_purchase", {
         p_purchase_id: purchaseId,
       });
 
@@ -97,7 +94,7 @@ export class CreditsService {
   ): Promise<{ success: boolean; newBalance: number }> {
     try {
       // Usar la función RPC existente para reembolsar
-      const { data, error } = await supabase.rpc("refund_credits_for_video", {
+      const { error } = await supabase.rpc("refund_credits_for_video", {
         p_video_id: videoId,
       });
 

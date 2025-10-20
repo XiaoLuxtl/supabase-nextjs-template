@@ -1,46 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation"; // Usamos usePathname para saber qué link está activo
-import { useEffect, useState } from "react";
-import { createSPAClient } from "@/lib/supabase/client";
-
 import HomePricing from "@/components/HomePricing";
 import { ArrowLeft } from "lucide-react";
 import { CreditBalance } from "@/components/CreditBalance";
 
-import type { UserProfile } from "@/types/database.types";
-
 export default function PaquetesPage() {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const supabase = createSPAClient();
-
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  async function loadProfile() {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        const { data: profileData } = await supabase
-          .from("user_profiles")
-          .select("*")
-          .eq("id", user.id)
-          .single();
-
-        setProfile(profileData);
-      }
-    } catch (error) {
-      console.error("Error loading profile:", error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   const router = useRouter();
 
   return (
@@ -66,8 +31,8 @@ export default function PaquetesPage() {
             </p>
 
             <CreditBalance
-              variant="badge"
-              className="bg-pink-500/20 border-pink-500 text-pink-500"
+              variant="centered"
+              className="bg-pink-500/20 border border-pink-500 rounded-full px-4 py-2 text-pink-500 text-sm font-medium"
             />
           </div>
         </div>

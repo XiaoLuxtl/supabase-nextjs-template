@@ -1,6 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
-import { createSPASassClient } from "@/lib/supabase/client";
+import { useGlobal } from "@/lib/context/GlobalContext";
 import { ArrowRight, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
@@ -15,29 +14,18 @@ export default function AuthAwareButtons({
   variant = "primary",
   primaryStyle,
 }: AuthAwareButtonsProps) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const supabase = await createSPASassClient();
-        const {
-          data: { user },
-        } = await supabase.getSupabaseClient().auth.getUser();
-        setIsAuthenticated(!!user);
-      } catch (error) {
-        console.error("Error checking auth status:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, []);
+  const { isAuthenticated, loading } = useGlobal();
 
   if (loading) {
-    return null;
+    // Mostrar skeleton loading mientras se verifica la autenticación
+    return (
+      <div className="flex items-center gap-2">
+        <div className="h-5 w-20 bg-gray-300 animate-pulse rounded"></div>
+        {variant === "primary" && (
+          <div className="h-12 w-32 bg-gray-300 animate-pulse rounded-lg"></div>
+        )}
+      </div>
+    );
   }
 
   // --- Estilos de Navegación (variant="nav") ---
