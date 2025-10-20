@@ -29,6 +29,7 @@ export default function VideoGeneratorUI() {
     videos,
     setVideos,
     loading: videosLoading,
+    refreshVideos,
   } = useVideoGenerationData(selectedVideo, setSelectedVideo);
 
   // Loading combinado: autenticación + datos de videos
@@ -56,6 +57,7 @@ export default function VideoGeneratorUI() {
     setSelectedVideo,
     resetImage,
     setPrompt,
+    refreshVideos,
   });
 
   const currentError = generationError || uploadError;

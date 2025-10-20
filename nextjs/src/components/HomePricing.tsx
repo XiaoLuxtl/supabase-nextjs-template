@@ -70,7 +70,7 @@ const DynamicCreditCard = ({
       };
     }
     if (!isAuthenticated) {
-      return { text: "Iniciar Sesión / Registrarse", icon: null };
+      return { text: "Iniciar Sesión y Comprar", icon: null };
     }
     if (isPurchasing) {
       return {
@@ -161,7 +161,7 @@ const HomePricing = () => {
   const { fixedPackages, customPackage, loading, error } = usePackages();
   const [purchasing, setPurchasing] = useState<string | null>(null);
   // ✅ Obtener estado de autenticación y créditos del hook unificado
-  const { user, isAuthenticated } = useCredits();
+  const { user, isAuthenticated, initialized } = useCredits();
   const router = useRouter();
 
   async function handlePurchase(pkg: CreditPackage, customCredits?: number) {
@@ -217,12 +217,6 @@ const HomePricing = () => {
   // Función auxiliar para determinar texto del botón
   const getButtonText = (pkgId: string) => {
     if (!isAuthenticated) {
-      return {
-        text: "Cargando...",
-        icon: <Loader2 className="w-5 h-5 animate-spin" />,
-      };
-    }
-    if (!isAuthenticated) {
       return { text: "Iniciar Sesión y Comprar", icon: null };
     }
     if (purchasing === pkgId) {
@@ -244,8 +238,8 @@ const HomePricing = () => {
     );
   }, []);
 
-  // ✅ 1. SOLUCIÓN AL ERROR DE HYDRATION
-  if (!isAuthenticated) {
+  // ✅ 1. SOLUCIÓN AL ERROR DE HYDRATION - Mostrar loading solo mientras no esté inicializado
+  if (!initialized) {
     return (
       <section id="pricing" className="py-24 bg-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -327,7 +321,7 @@ const HomePricing = () => {
                       handlePurchase(pkg);
                     }
                   }}
-                  disabled={purchasing === pkg.id || !isAuthenticated}
+                  disabled={purchasing === pkg.id}
                   className={`flex flex-col flex-grow focus:outline-none ${
                     pkg.is_popular
                       ? "hover:bg-primary-50/50 focus:bg-primary-50/50"
@@ -356,7 +350,7 @@ const HomePricing = () => {
                       {pkg.features &&
                         Array.isArray(pkg.features) &&
                         pkg.features.map((feature, i) => (
-                          <li key={i} className="flex items-center gap-2">
+                          <li key={feature} className="flex items-center gap-2">
                             <Check className="h-5 w-5 text-green-500" />
                             <span className="text-gray-600">{feature}</span>
                           </li>

@@ -1,5 +1,5 @@
 // src/hooks/useVideoGenerationData.ts
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createSPAClient } from "@/lib/supabase/client";
 import { VideoGeneration } from "@/types/database.types";
 import { useGlobal } from "@/lib/context/GlobalContext";
@@ -91,13 +91,13 @@ export function useVideoGenerationData(
       .from("video_generations")
       .select("*")
       .eq("user_id", userId)
-      .gt("credits_used", 0)
+      .not("vidu_task_id", "is", null)
+      .neq("vidu_task_id", "")
       .in("status", [
         "pending",
         "queued",
         "processing",
         "completed",
-        "failed",
         "cancelled",
       ])
       .order("created_at", { ascending: false })
@@ -192,7 +192,7 @@ export function useVideoGenerationData(
           });
 
           // ✅ Solo seleccionar si no hay video seleccionado
-          setSelectedVideo((current) => (!current ? newVideo : current));
+          setSelectedVideo((current) => current ?? newVideo);
           break;
         }
 
@@ -256,5 +256,12 @@ export function useVideoGenerationData(
     }
   };
 
-  return { videos, setVideos, loading, supabase };
+  const refreshVideos = useCallback(async () => {
+    if (user?.id) {
+      console.log("🔄 Refreshing videos list...");
+      await loadInitialVideos(user.id);
+    }
+  }, [user?.id]);
+
+  return { videos, setVideos, loading, supabase, refreshVideos };
 }

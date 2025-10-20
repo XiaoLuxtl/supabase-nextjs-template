@@ -55,6 +55,7 @@ export function GlobalProvider({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionHealth, setSessionHealth] = useState<SessionHealth>("unknown");
   const [initialized, setInitialized] = useState(false);
+  const [hasFocus, setHasFocus] = useState<boolean>(true); // Asumir que inicia con foco
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const userIdRef = useRef<string | null>(null);
   const sessionCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -256,6 +257,11 @@ export function GlobalProvider({
       setLoading(false);
       setInitialized(true); // Always mark as initialized
       isInitializingRef.current = false;
+      console.log("✅ refreshUserProfile completed:", {
+        initialized: true,
+        isAuthenticated,
+        user: user ? "present" : "null",
+      });
     }
   }, [fetchUserProfile, attemptSessionRecovery]);
 
@@ -332,14 +338,66 @@ export function GlobalProvider({
     };
   }, []); // Empty dependency array - only run once on mount
 
+  // useEffect para configurar listeners de focus/blur
+  useEffect(() => {
+    const handleFocus = async () => {
+      console.log("🔄 Window gained focus");
+      setHasFocus(true);
+
+      // Verificación rápida de sesión al recuperar foco
+      if (initialized && user && !isInitializingRef.current) {
+        try {
+          const health = await checkSessionHealth();
+          setSessionHealth(health);
+
+          // Si la sesión expiró, intentar refresh rápido
+          if (health === "expired") {
+            console.log("🔄 Session expired, attempting quick refresh");
+            const supabase = createSPAClient();
+            const { error } = await supabase.auth.refreshSession();
+            if (!error) {
+              setSessionHealth("healthy");
+              console.log("✅ Session refreshed successfully on focus");
+            }
+          }
+        } catch (error) {
+          console.error("Error checking session on focus:", error);
+        }
+      }
+    };
+
+    const handleBlur = () => {
+      console.log("🔄 Window lost focus");
+      setHasFocus(false);
+    };
+
+    // Configurar listeners
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("blur", handleBlur);
+
+    // Verificar foco inicial
+    setHasFocus(document.hasFocus());
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [initialized, user, checkSessionHealth]);
+
   // Segundo useEffect para configurar suscripciones y health checks
   useEffect(() => {
-    if (!initialized) return; // Solo configurar después de la inicialización
+    if (!initialized || !user?.id) return; // Solo configurar después de la inicialización y cuando hay usuario
 
-    // Configurar health check periódico
+    // Configurar health check periódico - solo cuando tiene foco
     sessionCheckIntervalRef.current = setInterval(async () => {
+      // Solo verificar si la ventana tiene foco
+      if (!hasFocus) return;
+
       const now = Date.now();
-      if (now - lastSessionCheckRef.current > SESSION_CHECK_INTERVAL) {
+      // Usar intervalo más corto cuando tiene foco (30 segundos vs 5 minutos)
+      const checkInterval = hasFocus ? 30 * 1000 : SESSION_CHECK_INTERVAL;
+
+      if (now - lastSessionCheckRef.current > checkInterval) {
         lastSessionCheckRef.current = now;
         const health = await checkSessionHealth();
         setSessionHealth(health);
@@ -352,15 +410,15 @@ export function GlobalProvider({
             const { error } = await supabase.auth.refreshSession();
             if (!error) {
               setSessionHealth("healthy");
-              // Actualizar perfil después del refresh
-              await refreshUserProfile();
+              // NO refrescar perfil completo - solo actualizar health
+              console.log("✅ Token refreshed successfully");
             }
           } catch (error) {
             console.error("Proactive token refresh failed:", error);
           }
         }
       }
-    }, 60000); // Verificar cada minuto
+    }, 10000); // Verificar cada 10 segundos cuando tiene foco
 
     // Configurar suscripción para cambios en el perfil
     const setupSubscription = () => {
@@ -408,9 +466,19 @@ export function GlobalProvider({
 
         if (event === "SIGNED_IN" && session?.user) {
           console.log("✅ User signed in, checking if profile refresh needed");
-          // Solo refrescar si no se está inicializando (evita conflictos con la inicialización inicial)
+          // Solo refrescar si no tenemos usuario o el ID cambió
           if (!isInitializingRef.current && initialized) {
-            await refreshUserProfile();
+            if (!user || user.id !== session.user.id) {
+              console.log("🔄 User changed or missing, refreshing profile");
+              await refreshUserProfile();
+            } else {
+              console.log(
+                "🔄 User already loaded, skipping full profile refresh"
+              );
+              // Solo verificar health de sesión
+              const health = await checkSessionHealth();
+              setSessionHealth(health);
+            }
           } else {
             console.log(
               "🔄 Skipping profile refresh - initialization in progress or not initialized yet"
@@ -425,14 +493,26 @@ export function GlobalProvider({
           setInitialized(true);
           setLoading(false);
         } else if (event === "TOKEN_REFRESHED") {
-          console.log("🔑 Token refreshed, updating profile");
+          console.log("🔑 Token refreshed, updating session health");
           if (!isInitializingRef.current) {
-            await refreshUserProfile();
+            // Solo actualizar health, no refrescar perfil completo
+            const health = await checkSessionHealth();
+            setSessionHealth(health);
           }
         } else if (event === "USER_UPDATED") {
-          console.log("👤 User updated, refreshing profile");
+          console.log("👤 User updated, checking if profile refresh needed");
           if (!isInitializingRef.current) {
-            await refreshUserProfile();
+            // Solo refrescar si el usuario cambió significativamente
+            if (
+              session?.user &&
+              (!user ||
+                user.id !== session.user.id ||
+                user.email !== session.user.email)
+            ) {
+              await refreshUserProfile();
+            } else {
+              console.log("👤 User update not significant, skipping refresh");
+            }
           }
         }
       });
@@ -452,7 +532,7 @@ export function GlobalProvider({
       }
       authSubscription.unsubscribe();
     };
-  }, [checkSessionHealth, refreshUserProfile]); // Dependencies are stable due to useCallback
+  }, [checkSessionHealth, refreshUserProfile, initialized, user?.id, hasFocus]); // Dependencies are stable due to useCallback
 
   const contextValue = useMemo(
     () => ({

@@ -17,8 +17,14 @@ export interface CreditTransaction {
 }
 
 export function useCredits() {
-  const { user, refreshUserProfile, loading, isAuthenticated, sessionHealth } =
-    useGlobal();
+  const {
+    user,
+    refreshUserProfile,
+    loading,
+    isAuthenticated,
+    sessionHealth,
+    initialized,
+  } = useGlobal();
 
   const balance = user?.credits_balance ?? 0;
 
@@ -191,6 +197,7 @@ export function useCredits() {
     // Estado
     balance,
     loading,
+    initialized,
     hasCredits,
 
     // Acciones

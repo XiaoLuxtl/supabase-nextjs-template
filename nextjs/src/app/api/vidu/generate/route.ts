@@ -8,6 +8,65 @@ const supabase = createClient(
   process.env.PRIVATE_SUPABASE_SERVICE_KEY!
 );
 
+// Función helper para marcar video como fallido y reembolsar créditos
+async function refundAndMarkFailed(
+  videoId: string,
+  userId: string,
+  errorMessage: string,
+  currentCredits: number
+) {
+  console.log("Marking video as failed and refunding credit...");
+
+  // PRIMERO: Reembolsar crédito usando la RPC (mientras credits_used = 1)
+  const { data: refundResult, error: refundError } = await supabase.rpc(
+    "refund_credits_for_video",
+    {
+      p_video_id: videoId,
+    }
+  );
+
+  if (refundError) {
+    console.error("RPC refund failed:", refundError);
+    // Intentar reembolso directo si la RPC falla
+    console.log("Attempting direct refund...");
+    const { error: directRefundError } = await supabase
+      .from("user_profiles")
+      .update({ credits_balance: currentCredits + 1 })
+      .eq("id", userId);
+
+    if (directRefundError) {
+      console.error("Direct refund also failed:", directRefundError);
+    } else {
+      console.log("Direct refund successful");
+    }
+  } else {
+    console.log("RPC refund successful, result:", refundResult);
+  }
+
+  // SEGUNDO: Marcar como failed y credits_used = 0 (reembolsado)
+  const { error: updateError } = await supabase
+    .from("video_generations")
+    .update({
+      status: "failed",
+      error_message: errorMessage,
+      credits_used: 0, // Reembolsado
+    })
+    .eq("id", videoId);
+
+  if (updateError) {
+    console.error("Error updating video to failed:", updateError);
+  }
+
+  // Obtener créditos reembolsados
+  const { data: refundedProfile } = await supabase
+    .from("user_profiles")
+    .select("credits_balance")
+    .eq("id", userId)
+    .single();
+
+  return refundedProfile?.credits_balance ?? currentCredits + 1;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -83,13 +142,28 @@ export async function POST(request: NextRequest) {
       prompt: userPrompt,
       translated_prompt_en: refinedPrompt,
       input_image_url: "",
-      status: "pending",
+      input_image_path: null,
       model: "viduq1",
       duration: 5,
       aspect_ratio: "16:9",
       resolution: "1080p",
+      vidu_task_id: null,
+      vidu_creation_id: null,
+      status: "pending",
       credits_used: 0,
+      video_url: null,
+      cover_url: null,
+      video_duration_actual: null,
+      video_fps: null,
+      bgm: false,
+      error_message: null,
+      error_code: null,
+      retry_count: 0,
+      max_retries: 3,
+      vidu_full_response: null,
       created_at: new Date().toISOString(),
+      started_at: null,
+      completed_at: null,
     };
 
     const { data: generation, error: genError } = await supabase
@@ -118,13 +192,49 @@ export async function POST(request: NextRequest) {
 
     if (consumeError) {
       console.error("Error consuming credit:", consumeError);
-      // Revertir: Eliminar el registro si falla el consumo de crédito
-      await supabase.from("video_generations").delete().eq("id", generation.id);
+      // Marcar como failed en lugar de eliminar
+      await supabase
+        .from("video_generations")
+        .update({
+          status: "failed",
+          error_message: `Error al consumir crédito: ${consumeError.message}`,
+          credits_used: 0, // No se consumieron créditos
+        })
+        .eq("id", generation.id);
       return NextResponse.json(
         { error: "Error al consumir crédito" },
         { status: 500 }
       );
     }
+
+    // ✅ MARCAR CRÉDITO COMO CONSUMIDO EN EL VIDEO
+    console.log("Marking credit as consumed on video record...");
+    const { error: markConsumedError } = await supabase
+      .from("video_generations")
+      .update({ credits_used: 1 })
+      .eq("id", generation.id);
+
+    if (markConsumedError) {
+      console.error("Error marking credit as consumed:", markConsumedError);
+      // Revertir: Reembolsar crédito y marcar como failed
+      await supabase.rpc("refund_credits_for_video", {
+        p_video_id: generation.id,
+      });
+      await supabase
+        .from("video_generations")
+        .update({
+          status: "failed",
+          error_message: `Error al marcar crédito como consumido: ${markConsumedError.message}`,
+          credits_used: 0, // Reembolsado
+        })
+        .eq("id", generation.id);
+      return NextResponse.json(
+        { error: "Error al marcar crédito como consumido" },
+        { status: 500 }
+      );
+    }
+
+    console.log("✅ Credit marked as consumed on video record");
 
     // ✅ OBTENER CRÉDITOS ACTUALIZADOS INMEDIATAMENTE
     console.log("Getting updated credits...");
@@ -141,6 +251,34 @@ export async function POST(request: NextRequest) {
     const updatedCredits =
       updatedProfile?.credits_balance ?? profile.credits_balance - 1;
     console.log(`💰 Créditos actualizados: ${updatedCredits}`);
+
+    // ✅ FAILSAFE: Verificar que los créditos bajaron correctamente
+    const initialCredits = profile.credits_balance;
+    if (updatedCredits >= initialCredits) {
+      console.error(
+        `❌ FAILSAFE: Créditos no bajaron! Inicial: ${initialCredits}, Actual: ${updatedCredits}`
+      );
+      // Reembolsar inmediatamente y marcar como failed
+      await supabase.rpc("refund_credits_for_video", {
+        p_video_id: generation.id,
+      });
+      await supabase
+        .from("video_generations")
+        .update({
+          status: "failed",
+          error_message: `Failsafe activado: créditos no bajaron (inicial: ${initialCredits}, actual: ${updatedCredits})`,
+          credits_used: 0, // Reembolsado
+        })
+        .eq("id", generation.id);
+      return NextResponse.json(
+        { error: "Error en consumo de créditos (failsafe activado)" },
+        { status: 500 }
+      );
+    }
+
+    console.log(
+      `✅ FAILSAFE: Créditos bajaron correctamente (${initialCredits} → ${updatedCredits})`
+    );
 
     // Llamar a Vidu API (DESPUÉS de consumir crédito)
     console.log("Calling Vidu API...");
@@ -171,21 +309,18 @@ export async function POST(request: NextRequest) {
 
     if (!viduResponse.ok) {
       console.error("Vidu API error:", responseText);
-      // ✅ NO revertimos el consumo de crédito, pero marcamos como failed
-      await supabase
-        .from("video_generations")
-        .update({
-          status: "failed",
-          error_message: `Vidu API error: ${responseText}`,
-          credits_used: 1, // El crédito ya se consumió
-        })
-        .eq("id", generation.id);
 
-      // ✅ Pero SÍ devolvemos los créditos actualizados
+      const finalCredits = await refundAndMarkFailed(
+        generation.id,
+        user_id,
+        `Vidu API error: ${responseText}`,
+        updatedCredits
+      );
+
       return NextResponse.json({
         success: false,
         error: `Vidu API error: ${responseText}`,
-        updatedCredits: updatedCredits, // 👈 Importante: devolver créditos actualizados
+        updatedCredits: finalCredits,
       });
     }
 
@@ -195,37 +330,35 @@ export async function POST(request: NextRequest) {
       taskId = viduData.task_id?.toString();
     } catch (parseError) {
       console.error("Failed to parse Vidu response:", parseError);
-      await supabase
-        .from("video_generations")
-        .update({
-          status: "failed",
-          error_message: "Invalid Vidu response",
-          credits_used: 1,
-        })
-        .eq("id", generation.id);
+
+      const finalCredits = await refundAndMarkFailed(
+        generation.id,
+        user_id,
+        "Invalid Vidu response",
+        updatedCredits
+      );
 
       return NextResponse.json({
         success: false,
         error: "Invalid Vidu response",
-        updatedCredits: updatedCredits, // 👈 Devolver créditos actualizados
+        updatedCredits: finalCredits,
       });
     }
 
     if (!taskId) {
       console.error("No task_id in Vidu response");
-      await supabase
-        .from("video_generations")
-        .update({
-          status: "failed",
-          error_message: "No task_id in response",
-          credits_used: 1,
-        })
-        .eq("id", generation.id);
+
+      const finalCredits = await refundAndMarkFailed(
+        generation.id,
+        user_id,
+        "No task_id in response",
+        updatedCredits
+      );
 
       return NextResponse.json({
         success: false,
         error: "No task_id in response",
-        updatedCredits: updatedCredits, // 👈 Devolver créditos actualizados
+        updatedCredits: finalCredits,
       });
     }
 

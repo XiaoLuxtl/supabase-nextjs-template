@@ -22,16 +22,17 @@ export default function AppLayout({ children }: React.PropsWithChildren) {
   const [isUserDropdownOpen, setUserDropdownOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { user, forceLogout, initialized, isAuthenticated, loading } =
-    useGlobal();
+  const { user, forceLogout, initialized, isAuthenticated } = useGlobal();
 
   // Redirigir automáticamente si no hay usuario autenticado
   useEffect(() => {
+    console.log("🔍 AppLayout useEffect:", { initialized, isAuthenticated });
     if (initialized && !isAuthenticated) {
       console.log("🔒 No authenticated user, redirecting to login");
-      router.push("/auth/login");
+      // Usar window.location para redirección forzada
+      globalThis.location.href = "/auth/login";
     }
-  }, [initialized, isAuthenticated, router]);
+  }, [initialized, isAuthenticated]);
 
   // Manejar clics fuera del dropdown de usuario
   useEffect(() => {
@@ -49,7 +50,7 @@ export default function AppLayout({ children }: React.PropsWithChildren) {
   }, [isUserDropdownOpen]);
 
   // Mostrar loading mientras se inicializa la autenticación
-  if (!initialized || loading) {
+  if (!initialized) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
         <div className="text-center">
@@ -60,7 +61,7 @@ export default function AppLayout({ children }: React.PropsWithChildren) {
     );
   }
 
-  // Redirigir si no está autenticado (fallback)
+  // Si está inicializado pero no autenticado, mostrar redirigiendo y dejar que el useEffect maneje la redirección
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">

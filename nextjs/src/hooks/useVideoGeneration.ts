@@ -4,6 +4,28 @@ import { VideoGeneration } from "@/types/database.types";
 import { User, useGlobal } from "@/lib/context/GlobalContext";
 import { processImageForVidu } from "@/lib/image-processor";
 
+// Función para convertir errores técnicos en mensajes user-friendly
+const getUserFriendlyErrorMessage = (errorMessage: string): string => {
+  if (errorMessage.includes("Vidu API error")) {
+    return "Error al procesar el video. Los créditos han sido reembolsados. Por favor, intenta nuevamente o contacta soporte si el problema persiste.";
+  }
+  if (errorMessage.includes("Contenido no permitido")) {
+    return "La imagen contiene contenido no permitido. Por favor, usa una imagen diferente.";
+  }
+  if (errorMessage.includes("Créditos insuficientes")) {
+    return "No tienes suficientes créditos. Compra más créditos para continuar.";
+  }
+  if (errorMessage.includes("Error al consumir crédito")) {
+    return "Error al procesar el pago. Por favor, intenta nuevamente.";
+  }
+  if (errorMessage.includes("failsafe activado")) {
+    return "Error de validación interna. Los créditos han sido reembolsados. Por favor, contacta soporte.";
+  }
+
+  // Default message
+  return "Error al generar el video. Por favor, intenta nuevamente o contacta soporte si el problema persiste.";
+};
+
 interface UseVideoGenerationProps {
   user: User | null;
   selectedFile: File | null;
@@ -15,6 +37,7 @@ interface UseVideoGenerationProps {
   >;
   resetImage: () => void;
   setPrompt: React.Dispatch<React.SetStateAction<string>>;
+  refreshVideos: () => Promise<void>;
 }
 
 export function useVideoGeneration({
@@ -23,6 +46,7 @@ export function useVideoGeneration({
   prompt,
   resetImage,
   setPrompt,
+  refreshVideos,
 }: UseVideoGenerationProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,15 +90,19 @@ export function useVideoGeneration({
 
       const data = await response.json();
 
-      if (!response.ok) {
-        const errorMessage = data.error || "Error desconocido al generar video";
-        setError(errorMessage);
-        throw new Error(errorMessage);
+      if (!response.ok || (data && !data.success)) {
+        const errorMessage =
+          data?.error || "Error desconocido al generar video";
+        // Refrescar lista de videos para asegurar que no se muestre video fallido
+        await refreshVideos();
+        // Mostrar mensaje de error mejorado
+        const userFriendlyMessage = getUserFriendlyErrorMessage(errorMessage);
+        setError(userFriendlyMessage);
+        throw new Error(userFriendlyMessage);
       }
 
-      // ✅ ACTUALIZAR CRÉDITOS INMEDIATAMENTE - incluso si Vidu falla
-      console.log("🔄 Actualizando créditos después de generar video...");
-      await refreshUserProfile();
+      // ✅ NO actualizar manualmente - el API ya devuelve créditos actualizados
+      // El GlobalContext se actualiza automáticamente via suscripción en tiempo real
 
       // Limpiar formulario solo si fue exitoso
       if (data.success) {
@@ -87,13 +115,20 @@ export function useVideoGeneration({
       }
     } catch (err: unknown) {
       console.error("Generate error:", err);
-      const errorMessage =
-        err instanceof Error
-          ? err.message
-          : typeof err === "string"
-          ? err
-          : "Error desconocido al generar video";
-      setError(errorMessage);
+
+      // Refrescar lista de videos para asegurar que no se muestre video fallido
+      await refreshVideos();
+
+      let errorMessage = "Error desconocido al generar video";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === "string") {
+        errorMessage = err;
+      }
+
+      // Convertir a mensaje user-friendly
+      const userFriendlyMessage = getUserFriendlyErrorMessage(errorMessage);
+      setError(userFriendlyMessage);
     } finally {
       setIsGenerating(false);
     }

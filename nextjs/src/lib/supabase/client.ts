@@ -18,7 +18,7 @@ const createSupabaseBrowserClient = () =>
     {
       auth: {
         persistSession: true,
-        autoRefreshToken: true,
+        autoRefreshToken: false, // Desactivar auto-refresh para controlar manualmente
         detectSessionInUrl: true,
       },
       realtime: {
