@@ -13,6 +13,7 @@ import { useGlobal } from "@/lib/context/GlobalContext";
 import { createSPASassClientAuthenticated } from "@/lib/supabase/client";
 import { Key, User, CheckCircle, CalendarDays } from "lucide-react";
 import { MFASetup } from "@/components/MFASetup";
+import { CreditBalance } from "@/components/CreditBalance";
 
 export default function UserSettingsPage() {
   const { user } = useGlobal();
@@ -124,7 +125,7 @@ export default function UserSettingsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-3xl font-bold text-emerald-500">
-                  {user?.credits_balance ?? 0} créditos
+                  <CreditBalance showIcon={false} showLabel={false} />
                 </div>
                 <p className="mt-2 text-sm text-gray-500">
                   Usa tus créditos para generar videos y otros servicios

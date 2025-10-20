@@ -12,10 +12,10 @@ import VideoGeneratorForm from "@/components/VideoGeneratorForm";
 import { VideoPlayerMain } from "@/components/VideoPlayerMain";
 import { VideoPlayerMobile } from "@/components/VideoPlayerMobile";
 import { ArrowDownToLine, Loader2 } from "lucide-react";
-import { useGlobal } from "@/lib/context/GlobalContext";
+import { useCredits } from "@/hooks/useCredits";
 
 export default function VideoGeneratorUI() {
-  const { user, loading: globalLoading } = useGlobal();
+  const { user } = useCredits();
   const [selectedVideo, setSelectedVideo] = useState<VideoGeneration | null>(
     null
   );
@@ -60,7 +60,7 @@ export default function VideoGeneratorUI() {
     }
   };
 
-  if (globalLoading || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
         <Loader2 className="h-12 w-12 text-pink-500 animate-spin" />
@@ -75,7 +75,6 @@ export default function VideoGeneratorUI() {
         <div className="lg:col-span-1">
           <VideoGeneratorForm
             isGenerating={isGenerating}
-            credits={user?.credits_balance ?? 0}
             error={currentError}
             selectedFile={selectedFile}
             preview={preview}

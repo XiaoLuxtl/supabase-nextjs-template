@@ -28,7 +28,7 @@ BEGIN
 
     -- Update user credits - add back the used credits
     UPDATE public.user_profiles
-    SET credits = credits + v_credits_used
+    SET credits_balance = credits_balance + v_credits_used
     WHERE id = v_user_id;
 
     -- Log the refund in a new credits_history table (if you have one)

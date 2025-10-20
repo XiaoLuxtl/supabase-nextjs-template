@@ -12,10 +12,11 @@ import {
 import Link from "next/link";
 import ImageUpload from "@/components/ImageUpload";
 import { DropzoneRootProps, DropzoneInputProps } from "react-dropzone";
+import { useCredits } from "@/hooks/useCredits";
+import { CreditStatus } from "@/components/CreditBalance";
 
 interface VideoGeneratorFormProps {
   isGenerating: boolean;
-  credits: number;
   error: string | null;
   selectedFile: File | null;
   preview: string | null;
@@ -31,7 +32,6 @@ interface VideoGeneratorFormProps {
 export const VideoGeneratorForm: React.FC<VideoGeneratorFormProps> = React.memo(
   ({
     isGenerating,
-    credits,
     error,
     preview,
     prompt,
@@ -42,7 +42,7 @@ export const VideoGeneratorForm: React.FC<VideoGeneratorFormProps> = React.memo(
     getInputProps,
     isDragActive,
   }) => {
-    const hasCredits = credits > 0;
+    const { balance, hasCredits, canAfford } = useCredits();
     const isFormDisabled = !hasCredits || isGenerating;
 
     return (
@@ -190,7 +190,7 @@ export const VideoGeneratorForm: React.FC<VideoGeneratorFormProps> = React.memo(
                 hasCredits ? "text-emerald-300" : "text-amber-300"
               }`}
             >
-              {credits}
+              {balance}
             </span>
           </div>
 

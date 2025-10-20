@@ -74,7 +74,6 @@ export async function POST(request: NextRequest) {
         const { error: refundError } = await supabase.rpc(
           "refund_credit_for_video",
           {
-            p_user_id: generation.user_id,
             p_video_id: generation.id,
           }
         );

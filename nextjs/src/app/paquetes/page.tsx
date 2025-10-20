@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation"; // Usamos usePathname para saber qué link está activo
 import { useEffect, useState } from "react";
 import { createSPAClient } from "@/lib/supabase/client";
-import { Sparkles } from "lucide-react";
+
 import HomePricing from "@/components/HomePricing";
 import { ArrowLeft } from "lucide-react";
+import { CreditBalance } from "@/components/CreditBalance";
 
 import type { UserProfile } from "@/types/database.types";
 
@@ -64,14 +65,10 @@ export default function PaquetesPage() {
               Selecciona el paquete perfecto para tus necesidades
             </p>
 
-            {!loading && profile && (
-              <div className="inline-flex items-center gap-2 bg-pink-500/20 border border-pink-500 rounded-full px-6 py-3">
-                <Sparkles className="h-5 w-5 text-pink-500" />
-                <span className="text-pink-500 font-bold text-lg">
-                  Créditos disponibles: {profile.credits_balance}
-                </span>
-              </div>
-            )}
+            <CreditBalance
+              variant="badge"
+              className="bg-pink-500/20 border-pink-500 text-pink-500"
+            />
           </div>
         </div>
       </section>

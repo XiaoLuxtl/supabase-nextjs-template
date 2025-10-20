@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Plus, Minus, Loader2 } from "lucide-react";
 import { usePackages } from "@/hooks/usePackages";
-import { useGlobal } from "@/lib/context/GlobalContext";
+import { useCredits } from "@/hooks/useCredits";
 import type { CreditPackage } from "@/types/database.types";
 import {
   Card,
@@ -160,8 +160,8 @@ const DynamicCreditCard = ({
 const HomePricing = () => {
   const { fixedPackages, customPackage, loading, error } = usePackages();
   const [purchasing, setPurchasing] = useState<string | null>(null);
-  // ✅ Obtener isAuthenticated del contexto
-  const { user, loading: globalLoading, isAuthenticated } = useGlobal();
+  // ✅ Obtener estado de autenticación y créditos del hook unificado
+  const { user, isAuthenticated } = useCredits();
   const router = useRouter();
 
   async function handlePurchase(pkg: CreditPackage, customCredits?: number) {
@@ -216,7 +216,7 @@ const HomePricing = () => {
 
   // Función auxiliar para determinar texto del botón
   const getButtonText = (pkgId: string) => {
-    if (globalLoading) {
+    if (!isAuthenticated) {
       return {
         text: "Cargando...",
         icon: <Loader2 className="w-5 h-5 animate-spin" />,
@@ -245,7 +245,7 @@ const HomePricing = () => {
   }, []);
 
   // ✅ 1. SOLUCIÓN AL ERROR DE HYDRATION
-  if (globalLoading) {
+  if (!isAuthenticated) {
     return (
       <section id="pricing" className="py-24 bg-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -327,7 +327,7 @@ const HomePricing = () => {
                       handlePurchase(pkg);
                     }
                   }}
-                  disabled={purchasing === pkg.id || globalLoading}
+                  disabled={purchasing === pkg.id || !isAuthenticated}
                   className={`flex flex-col flex-grow focus:outline-none ${
                     pkg.is_popular
                       ? "hover:bg-primary-50/50 focus:bg-primary-50/50"
@@ -385,8 +385,8 @@ const HomePricing = () => {
               package={customPackage}
               onPurchase={handlePurchase}
               currentUser={user}
-              isGlobalLoading={globalLoading}
-              isAuthenticated={isAuthenticated} // ✅ Pasar estado de autenticación
+              isGlobalLoading={false}
+              isAuthenticated={isAuthenticated}
             />
           )}
         </div>
