@@ -14,6 +14,7 @@ import HomeFooter from "@/components/HomeFooter";
 import HomeFeatures from "@/components/HomeFeatures";
 import HomeStats from "@/components/HomeStats";
 import HomeHero from "@/components/HomeHero";
+import ConsoleTest from "@/components/ConsoleTest";
 
 export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -75,6 +76,15 @@ export default function Home() {
             )}
           </div>
         </section>
+
+        {/* ======================= CONSOLE TEST (SOLO PARA DEBUG) ======================= */}
+        {process.env.NEXT_PUBLIC_NODE_ENV === "development" && (
+          <section className="py-8">
+            <div className="container mx-auto px-4">
+              <ConsoleTest />
+            </div>
+          </section>
+        )}
 
         {/* ======================= FOOTER ======================= */}
         <HomeFooter />
