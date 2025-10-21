@@ -1,351 +1,286 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MercadoPagoConfig, Payment } from "mercadopago";
-import { createClient } from "@supabase/supabase-js";
-import crypto from "crypto";
+import {
+  parseWebhookEvent,
+  logWebhookAttempt,
+  buildBodyFromQueryParams,
+  isValidWebhookStructure,
+} from "@/lib/mercadopago/webhook-utils";
+import {
+  processPayment,
+  processMerchantOrder,
+} from "@/lib/mercadopago/payment-processor";
+import { verifyMercadoPagoSignature } from "@/lib/mercadopago/signature-utils";
 
-interface ApiError extends Error {
-  status?: number;
-  code?: string;
-}
+// Constantes para mejor mantenibilidad
+const HTTP_STATUS = {
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  INTERNAL_ERROR: 500,
+  SUCCESS: 200,
+} as const;
 
-const client = new MercadoPagoConfig({
-  accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN!,
-});
+const ENVIRONMENT = {
+  DEVELOPMENT: "development",
+  PRODUCTION: "production",
+} as const;
 
-const paymentClient = new Payment(client);
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.PRIVATE_SUPABASE_SERVICE_KEY!
-);
-
-// Utility function for sleep
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Validar firma del webhook
-function verifyWebhookSignature(
-  body: string,
+/**
+ * Procesa el webhook en background (no bloqueante)
+ */
+async function processInBackground(
+  event: ReturnType<typeof parseWebhookEvent>,
   signature: string | null
-): boolean {
-  if (!signature) {
-    console.warn("❌ No webhook signature provided");
-    return false;
-  }
-
-  if (!process.env.MERCADOPAGO_WEBHOOK_SECRET) {
-    console.warn("⚠️ MERCADOPAGO_WEBHOOK_SECRET not configured");
-    // En desarrollo, permitir sin secret para testing
-    return process.env.NODE_ENV === "development";
-  }
-
+): Promise<void> {
   try {
-    const digest = crypto
-      .createHmac("sha256", process.env.MERCADOPAGO_WEBHOOK_SECRET)
-      .update(body)
-      .digest("hex");
+    console.log("🔧 Background processing:", event.type, event.resourceId);
 
-    const expectedSignature = `sha256=${digest}`;
-    const isValid = expectedSignature === signature;
-
-    console.log("🔐 Webhook signature verification:", {
-      received: signature.substring(0, 20) + "...",
-      expected: expectedSignature.substring(0, 20) + "...",
-      isValid,
-    });
-
-    return isValid;
-  } catch (error) {
-    console.error("❌ Error verifying webhook signature:", error);
-    return false;
-  }
-}
-
-// Log webhook attempt
-async function logWebhookAttempt(
-  paymentId: string | null,
-  eventType: string,
-  payload: any,
-  signature: string | null,
-  isValid: boolean,
-  errorMessage?: string
-) {
-  try {
-    await supabase.from("mercadopago_webhook_logs").insert({
-      payment_id: paymentId,
-      event_type: eventType,
-      payload: payload,
-      signature: signature,
-      is_valid: isValid,
-      error_message: errorMessage,
-      processed: isValid && !errorMessage,
-    });
-  } catch (logError) {
-    console.error("❌ Failed to log webhook attempt:", logError);
-  }
-}
-
-// Procesar el pago de forma asíncrona
-async function processPaymentAsync(paymentId: string) {
-  const maxRetries = 10;
-  let payment;
-
-  // Intentar obtener el pago con reintentos
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      if (i > 0) {
-        await sleep(2000); // 2 segundos entre intentos
-        console.log(
-          `[Async] Retry ${i + 1}/${maxRetries} for payment ${paymentId}`
-        );
-      }
-
-      payment = await paymentClient.get({ id: paymentId });
-      console.log(`[Async] Payment ${paymentId} found on attempt ${i + 1}`);
-      break;
-    } catch (error) {
-      const apiError = error as ApiError;
-      if (apiError.status === 404 && i < maxRetries - 1) {
-        continue;
-      }
-
-      console.error(`[Async] Failed to get payment ${paymentId}:`, apiError);
-      return;
+    let processResult;
+    if (event.type === "payment") {
+      processResult = await processPayment(event.resourceId, event.data);
+    } else if (event.type === "merchant_order") {
+      processResult = await processMerchantOrder(event.resourceId, event.data);
     }
-  }
 
-  if (!payment) {
-    console.error(
-      `[Async] Payment ${paymentId} not found after ${maxRetries} retries`
-    );
-    return;
-  }
-
-  console.log("[Async] Payment details:", {
-    id: payment.id,
-    status: payment.status,
-    status_detail: payment.status_detail,
-    external_reference: payment.external_reference,
-    transaction_amount: payment.transaction_amount,
-  });
-
-  const purchaseId = payment.external_reference;
-  if (!purchaseId) {
-    console.error("[Async] No external_reference in payment");
-    return;
-  }
-
-  // Obtener la compra
-  const { data: purchase, error: purchaseError } = await supabase
-    .from("credit_purchases")
-    .select("*")
-    .eq("id", purchaseId)
-    .single();
-
-  if (purchaseError || !purchase) {
-    console.error("[Async] Purchase not found:", purchaseId);
-    return;
-  }
-
-  // Mapear estados
-  let newStatus = "pending";
-  if (payment.status === "approved") {
-    newStatus = "approved";
-  } else if (payment.status === "rejected") {
-    newStatus = "rejected";
-  } else if (payment.status === "cancelled") {
-    newStatus = "cancelled";
-  } else if (payment.status === "refunded") {
-    newStatus = "refunded";
-  }
-
-  console.log("[Async] Updating purchase status:", {
-    purchaseId,
-    oldStatus: purchase.payment_status,
-    newStatus,
-  });
-
-  // Actualizar estado
-  const { error: updateError } = await supabase
-    .from("credit_purchases")
-    .update({
-      payment_id: payment.id?.toString(),
-      payment_status: newStatus,
-    })
-    .eq("id", purchaseId);
-
-  if (updateError) {
-    console.error("[Async] Error updating purchase:", updateError);
-    return;
-  }
-
-  // Acreditar créditos si fue aprobado - CORREGIDO
-  if (newStatus === "approved" && !purchase.applied_at) {
-    console.log("[Async] Applying credits for purchase:", purchaseId);
-
-    // LLAMADA CORREGIDA - maneja respuesta JSONB
-    const { data: applyResult, error: applyError } = await supabase.rpc(
-      "apply_credit_purchase",
-      {
-        p_purchase_id: purchaseId,
-      }
-    );
-
-    if (applyError) {
-      console.error("[Async] Error applying credits:", applyError);
-    } else if (applyResult && !applyResult.success) {
-      console.error("[Async] Credit application failed:", applyResult.error);
+    if (processResult && !processResult.success) {
+      console.log(
+        "⚠️ Background processing failed (but we already returned 200):",
+        processResult.error
+      );
     } else {
-      console.log("[Async] ✓ Credits applied successfully!", {
-        new_balance: applyResult?.new_balance,
-        credits_added: applyResult?.credits_added,
-      });
+      console.log("✅ Background processing completed");
     }
+  } catch (error) {
+    console.error("❌ Background processing error (non-critical):", error);
   }
 }
 
-export async function POST(request: NextRequest) {
-  console.log("🎣 WEBHOOK RECEIVED!");
+/**
+ * Maneja el modo desarrollo - siempre retorna éxito
+ */
+async function handleDevelopmentMode(
+  rawBody: string,
+  signature: string | null,
+  requestUrl: string
+): Promise<NextResponse> {
+  console.log("🧪 DEV MODE: Returning immediate success");
+
+  try {
+    const body = parseRequestBody(rawBody, requestUrl);
+    const event = parseWebhookEvent(body);
+
+    await logWebhookAttempt(
+      event.resourceId,
+      event.type,
+      { ...(event.data as object), dev_mode: true }, // Cast seguro para spread
+      signature,
+      true,
+      "DEV MODE: Immediate success"
+    );
+
+    // Procesar en background sin esperar
+    processInBackground(event, signature).catch(console.error);
+
+    return NextResponse.json({
+      received: true,
+      environment: ENVIRONMENT.DEVELOPMENT,
+      message: "Webhook accepted in development mode",
+      event_type: event.type,
+      resource_id: event.resourceId,
+    });
+  } catch (error) {
+    console.error("❌ Error in dev mode, but returning 200:", error);
+    return NextResponse.json({
+      received: true,
+      environment: ENVIRONMENT.DEVELOPMENT,
+      error: "Error but returning success to avoid retries",
+    });
+  }
+}
+
+/**
+ * Parsea el body de la request de forma segura
+ */
+function parseRequestBody(rawBody: string, requestUrl: string): unknown {
+  if (rawBody) {
+    try {
+      return JSON.parse(rawBody);
+    } catch (parseError) {
+      console.error("❌ Error parsing JSON:", parseError);
+    }
+  }
+
+  // Si no hay body o falló el parse, construir desde query params
+  if (requestUrl.includes("?")) {
+    const constructedBody = buildBodyFromQueryParams(requestUrl);
+    if (constructedBody) {
+      try {
+        return JSON.parse(constructedBody);
+      } catch (e) {
+        console.error("❌ Error parsing constructed body:", e);
+      }
+    }
+  }
+
+  return {
+    url: requestUrl,
+    rawBody: rawBody.substring(0, 200),
+  };
+}
+
+/**
+ * Maneja la validación de firma en producción
+ */
+async function handleProductionValidation(
+  rawBody: string,
+  signature: string | null,
+  requestUrl: string
+): Promise<NextResponse | null> {
+  const signatureResult = verifyMercadoPagoSignature(rawBody, signature);
+
+  if (!signatureResult.isValid) {
+    console.error("❌ Invalid signature:", signatureResult.error);
+    await logWebhookAttempt(
+      null,
+      "invalid_signature",
+      { rawBody, url: requestUrl },
+      signature,
+      false,
+      signatureResult.error
+    );
+    return NextResponse.json(
+      { error: "Invalid signature" },
+      { status: HTTP_STATUS.UNAUTHORIZED }
+    );
+  }
+
+  console.log("✅ Signature valid");
+  return null; // No error, continuar procesamiento
+}
+
+/**
+ * Procesa el evento del webhook
+ */
+async function processWebhookEvent(
+  body: unknown,
+  signature: string | null,
+  requestUrl: string
+): Promise<NextResponse> {
+  // Validar estructura básica
+  if (!isValidWebhookStructure(body)) {
+    return NextResponse.json(
+      { error: "Invalid webhook structure" },
+      { status: HTTP_STATUS.BAD_REQUEST }
+    );
+  }
+
+  const event = parseWebhookEvent(body);
+  console.log(`🔍 Event type: ${event.type}, Resource: ${event.resourceId}`);
+
+  await logWebhookAttempt(
+    event.resourceId,
+    event.type,
+    { ...(event.data as object), originalUrl: requestUrl }, // Cast seguro
+    signature,
+    true
+  );
+
+  // Procesar según tipo (sincrónico en producción)
+  let processResult;
+  if (event.type === "payment") {
+    processResult = await processPayment(event.resourceId, event.data);
+  } else if (event.type === "merchant_order") {
+    processResult = await processMerchantOrder(event.resourceId, event.data);
+  } else {
+    console.log("⚠️ Unsupported event type");
+    return NextResponse.json({
+      received: true,
+      event_type: event.type,
+      message: "Event type not processed but acknowledged",
+    });
+  }
+
+  if (!processResult.success) {
+    console.error("❌ Processing failed:", processResult.error);
+    return NextResponse.json(
+      { error: processResult.error },
+      { status: HTTP_STATUS.INTERNAL_ERROR }
+    );
+  }
+
+  return NextResponse.json({
+    received: true,
+    event_type: event.type,
+    resource_id: event.resourceId,
+    processed: true,
+  });
+}
+
+/**
+ * Handler principal del webhook
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  console.log("🎣 WEBHOOK RECEIVED");
+  console.log("📋 URL:", request.url);
   console.log("🌐 Environment:", process.env.NODE_ENV);
 
   const signature = request.headers.get("x-signature");
-  console.log(
-    "🔐 Received signature:",
-    signature ? signature.substring(0, 50) + "..." : "None"
-  );
-
   const rawBody = await request.text();
-  console.log("📨 Raw body length:", rawBody.length);
 
-  // Validar firma del webhook
-  const isValidSignature = verifyWebhookSignature(rawBody, signature);
-
-  if (!isValidSignature) {
-    console.error("❌ INVALID WEBHOOK SIGNATURE - POSSIBLE ATTACK");
-
-    // Log del intento fallido
-    await logWebhookAttempt(
-      null,
-      "payment",
-      { raw_body: rawBody.substring(0, 500) + "..." },
-      signature,
-      false,
-      "Invalid webhook signature"
-    );
-
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  // EN DESARROLLO: Retornar éxito inmediatamente
+  if (process.env.NODE_ENV === ENVIRONMENT.DEVELOPMENT) {
+    return handleDevelopmentMode(rawBody, signature, request.url);
   }
 
-  console.log("✅ Webhook signature validated successfully");
+  // PRODUCCIÓN: Validación estricta
+  const validationError = await handleProductionValidation(
+    rawBody,
+    signature,
+    request.url
+  );
+  if (validationError) return validationError;
 
   try {
-    let data;
-    try {
-      data = JSON.parse(rawBody);
-      console.log("📋 Webhook event type:", data.type);
-      console.log("💰 Payment ID:", data.data?.id);
-    } catch (parseError) {
-      console.error("❌ Error parsing webhook body:", parseError);
-
-      await logWebhookAttempt(
-        null,
-        "invalid_json",
-        { raw_body: rawBody.substring(0, 500) + "..." },
-        signature,
-        false,
-        "Invalid JSON in webhook body"
-      );
-
-      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-    }
-
-    const { type, data: webhookData } = data;
-
-    if (type !== "payment") {
-      console.log("ℹ️ Ignoring non-payment webhook type:", type);
-
-      await logWebhookAttempt(
-        webhookData?.id,
-        type,
-        data,
-        signature,
-        true,
-        `Ignored non-payment type: ${type}`
-      );
-
-      return NextResponse.json({ received: true });
-    }
-
-    const paymentId = webhookData?.id;
-    if (!paymentId) {
-      console.error("❌ No payment ID in webhook data");
-
-      await logWebhookAttempt(
-        null,
-        "payment",
-        data,
-        signature,
-        false,
-        "No payment ID in webhook data"
-      );
-
-      return NextResponse.json({ error: "No payment ID" }, { status: 400 });
-    }
-
-    console.log("💰 Processing payment webhook for ID:", paymentId);
-
-    // Log webhook válido
-    await logWebhookAttempt(
-      paymentId,
-      "payment",
-      {
-        type: type,
-        payment_id: paymentId,
-        external_reference: data.data?.external_reference,
-      },
-      signature,
-      true
-    );
-
-    // Procesar el pago de forma asíncrona
-    processPaymentAsync(paymentId).catch((error) => {
-      console.error("❌ Error in async payment processing:", error);
-    });
-
-    return NextResponse.json({
-      received: true,
-      payment_id: paymentId,
-      processing: "async",
-      signature_valid: true,
-    });
+    const body = parseRequestBody(rawBody, request.url);
+    return await processWebhookEvent(body, signature, request.url);
   } catch (error) {
     console.error("❌ Webhook processing error:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
 
     await logWebhookAttempt(
       null,
-      "payment",
-      { raw_body: rawBody.substring(0, 500) + "..." },
+      "processing_error",
+      {
+        rawBody: rawBody.substring(0, 500),
+        url: request.url,
+        error: errorMessage,
+      },
       signature,
       false,
-      `Processing error: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`
+      errorMessage
     );
 
-    return NextResponse.json({
-      received: true,
-      error: "Internal error",
-      signature_valid: true,
-    });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: HTTP_STATUS.INTERNAL_ERROR }
+    );
   }
 }
 
-// GET para verificación de Mercado Pago
-export async function GET() {
+/**
+ * Endpoint GET para verificación
+ */
+export async function GET(): Promise<NextResponse> {
   return NextResponse.json({
     status: "ok",
-    webhook_security: "enabled",
+    webhook_security:
+      process.env.NODE_ENV === ENVIRONMENT.PRODUCTION
+        ? "enabled"
+        : "development_mode",
     environment: process.env.NODE_ENV,
+    note:
+      process.env.NODE_ENV === ENVIRONMENT.DEVELOPMENT
+        ? "In development: always returns 200 to avoid retries"
+        : "In production: strict validation enabled",
   });
 }

@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
         failure: `${appUrl}/paquetes/failure`,
         pending: `${appUrl}/paquetes/pending`,
       },
-      auto_return: "approved",
+      // auto_return: "approved",
       notification_url: `${appUrl}/api/payments/webhook`,
       external_reference: purchase.id, // ID de nuestra compra
       metadata: {
