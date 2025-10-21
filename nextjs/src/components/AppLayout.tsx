@@ -9,6 +9,7 @@ import {
   X,
   ChevronDown,
   LogOut,
+  PlayCircle,
   Key,
   ChevronLast,
   ChevronFirst,
@@ -20,9 +21,24 @@ export default function AppLayout({ children }: React.PropsWithChildren) {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isUserDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [forceShowContent, setForceShowContent] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const { user, forceLogout, initialized, isAuthenticated } = useGlobal();
+
+  // Failsafe: Forzar mostrar contenido después de 2 segundos si no se inicializó
+  useEffect(() => {
+    if (!initialized && !forceShowContent) {
+      const timeout = setTimeout(() => {
+        console.warn(
+          "⏰ Failsafe activado: Mostrando contenido después de 2 segundos de carga"
+        );
+        setForceShowContent(true);
+      }, 2000); // 2 segundos
+
+      return () => clearTimeout(timeout);
+    }
+  }, [initialized, forceShowContent]);
 
   // Redirigir automáticamente si no hay usuario autenticado
   useEffect(() => {
@@ -49,8 +65,8 @@ export default function AppLayout({ children }: React.PropsWithChildren) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isUserDropdownOpen]);
 
-  // Mostrar loading mientras se inicializa la autenticación
-  if (!initialized) {
+  // Mostrar loading mientras se inicializa la autenticación (con failsafe)
+  if (!initialized && !forceShowContent) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
         <div className="text-center">
@@ -61,8 +77,8 @@ export default function AppLayout({ children }: React.PropsWithChildren) {
     );
   }
 
-  // Si está inicializado pero no autenticado, mostrar redirigiendo y dejar que el useEffect maneje la redirección
-  if (!isAuthenticated) {
+  // Si está inicializado (o forzado por failsafe) pero no autenticado, mostrar redirigiendo y dejar que el useEffect maneje la redirección
+  if ((initialized || forceShowContent) && !isAuthenticated) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
         <div className="text-center">
@@ -99,6 +115,7 @@ export default function AppLayout({ children }: React.PropsWithChildren) {
 
   const navigation = [
     { name: "Inicio", href: "/app", icon: Home },
+    { name: "Tutorial", href: "/app/tutorial", icon: PlayCircle },
     {
       name: "Configuración de Usuario",
       href: "/app/user-settings",
