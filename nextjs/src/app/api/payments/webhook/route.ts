@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MercadoPagoConfig, Payment } from "mercadopago";
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 interface ApiError extends Error {
   status?: number;
-  code?: string; // Optional, if the API includes error codes
+  code?: string;
 }
 
 const client = new MercadoPagoConfig({
@@ -21,6 +22,68 @@ const supabase = createClient(
 // Utility function for sleep
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Validar firma del webhook
+function verifyWebhookSignature(
+  body: string,
+  signature: string | null
+): boolean {
+  if (!signature) {
+    console.warn("❌ No webhook signature provided");
+    return false;
+  }
+
+  if (!process.env.MERCADOPAGO_WEBHOOK_SECRET) {
+    console.warn("⚠️ MERCADOPAGO_WEBHOOK_SECRET not configured");
+    // En desarrollo, permitir sin secret para testing
+    return process.env.NODE_ENV === "development";
+  }
+
+  try {
+    const digest = crypto
+      .createHmac("sha256", process.env.MERCADOPAGO_WEBHOOK_SECRET)
+      .update(body)
+      .digest("hex");
+
+    const expectedSignature = `sha256=${digest}`;
+    const isValid = expectedSignature === signature;
+
+    console.log("🔐 Webhook signature verification:", {
+      received: signature.substring(0, 20) + "...",
+      expected: expectedSignature.substring(0, 20) + "...",
+      isValid,
+    });
+
+    return isValid;
+  } catch (error) {
+    console.error("❌ Error verifying webhook signature:", error);
+    return false;
+  }
+}
+
+// Log webhook attempt
+async function logWebhookAttempt(
+  paymentId: string | null,
+  eventType: string,
+  payload: any,
+  signature: string | null,
+  isValid: boolean,
+  errorMessage?: string
+) {
+  try {
+    await supabase.from("mercadopago_webhook_logs").insert({
+      payment_id: paymentId,
+      event_type: eventType,
+      payload: payload,
+      signature: signature,
+      is_valid: isValid,
+      error_message: errorMessage,
+      processed: isValid && !errorMessage,
+    });
+  } catch (logError) {
+    console.error("❌ Failed to log webhook attempt:", logError);
+  }
 }
 
 // Procesar el pago de forma asíncrona
@@ -117,55 +180,133 @@ async function processPaymentAsync(paymentId: string) {
     return;
   }
 
-  // Acreditar créditos si fue aprobado
+  // Acreditar créditos si fue aprobado - CORREGIDO
   if (newStatus === "approved" && !purchase.applied_at) {
     console.log("[Async] Applying credits for purchase:", purchaseId);
 
-    const { error: applyError } = await supabase.rpc("apply_credit_purchase", {
-      p_purchase_id: purchaseId,
-    });
+    // LLAMADA CORREGIDA - maneja respuesta JSONB
+    const { data: applyResult, error: applyError } = await supabase.rpc(
+      "apply_credit_purchase",
+      {
+        p_purchase_id: purchaseId,
+      }
+    );
 
     if (applyError) {
       console.error("[Async] Error applying credits:", applyError);
+    } else if (applyResult && !applyResult.success) {
+      console.error("[Async] Credit application failed:", applyResult.error);
     } else {
-      console.log("[Async] ✓ Credits applied successfully!");
+      console.log("[Async] ✓ Credits applied successfully!", {
+        new_balance: applyResult?.new_balance,
+        credits_added: applyResult?.credits_added,
+      });
     }
   }
 }
 
 export async function POST(request: NextRequest) {
   console.log("🎣 WEBHOOK RECEIVED!");
-  console.log("🌐 Headers:", Object.fromEntries(request.headers.entries()));
-  console.log("🌍 Environment:", process.env.NODE_ENV);
-  console.log("🔑 User-Agent:", request.headers.get("user-agent"));
+  console.log("🌐 Environment:", process.env.NODE_ENV);
+
+  const signature = request.headers.get("x-signature");
+  console.log(
+    "🔐 Received signature:",
+    signature ? signature.substring(0, 50) + "..." : "None"
+  );
+
+  const rawBody = await request.text();
+  console.log("📨 Raw body length:", rawBody.length);
+
+  // Validar firma del webhook
+  const isValidSignature = verifyWebhookSignature(rawBody, signature);
+
+  if (!isValidSignature) {
+    console.error("❌ INVALID WEBHOOK SIGNATURE - POSSIBLE ATTACK");
+
+    // Log del intento fallido
+    await logWebhookAttempt(
+      null,
+      "payment",
+      { raw_body: rawBody.substring(0, 500) + "..." },
+      signature,
+      false,
+      "Invalid webhook signature"
+    );
+
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  console.log("✅ Webhook signature validated successfully");
 
   try {
-    const body = await request.text();
-    console.log("📨 Raw body:", body);
-
     let data;
     try {
-      data = JSON.parse(body);
-      console.log("📋 Parsed webhook data:", JSON.stringify(data, null, 2));
+      data = JSON.parse(rawBody);
+      console.log("📋 Webhook event type:", data.type);
+      console.log("💰 Payment ID:", data.data?.id);
     } catch (parseError) {
       console.error("❌ Error parsing webhook body:", parseError);
+
+      await logWebhookAttempt(
+        null,
+        "invalid_json",
+        { raw_body: rawBody.substring(0, 500) + "..." },
+        signature,
+        false,
+        "Invalid JSON in webhook body"
+      );
+
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
 
     const { type, data: webhookData } = data;
 
     if (type !== "payment") {
-      console.log("ℹ️  Ignoring non-payment webhook type:", type);
+      console.log("ℹ️ Ignoring non-payment webhook type:", type);
+
+      await logWebhookAttempt(
+        webhookData?.id,
+        type,
+        data,
+        signature,
+        true,
+        `Ignored non-payment type: ${type}`
+      );
+
       return NextResponse.json({ received: true });
     }
 
     const paymentId = webhookData?.id;
     if (!paymentId) {
       console.error("❌ No payment ID in webhook data");
+
+      await logWebhookAttempt(
+        null,
+        "payment",
+        data,
+        signature,
+        false,
+        "No payment ID in webhook data"
+      );
+
       return NextResponse.json({ error: "No payment ID" }, { status: 400 });
     }
 
     console.log("💰 Processing payment webhook for ID:", paymentId);
+
+    // Log webhook válido
+    await logWebhookAttempt(
+      paymentId,
+      "payment",
+      {
+        type: type,
+        payment_id: paymentId,
+        external_reference: data.data?.external_reference,
+      },
+      signature,
+      true
+    );
 
     // Procesar el pago de forma asíncrona
     processPaymentAsync(paymentId).catch((error) => {
@@ -176,17 +317,35 @@ export async function POST(request: NextRequest) {
       received: true,
       payment_id: paymentId,
       processing: "async",
+      signature_valid: true,
     });
   } catch (error) {
-    console.error("❌ Webhook error:", error);
+    console.error("❌ Webhook processing error:", error);
+
+    await logWebhookAttempt(
+      null,
+      "payment",
+      { raw_body: rawBody.substring(0, 500) + "..." },
+      signature,
+      false,
+      `Processing error: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+
     return NextResponse.json({
       received: true,
       error: "Internal error",
+      signature_valid: true,
     });
   }
 }
 
 // GET para verificación de Mercado Pago
 export async function GET() {
-  return NextResponse.json({ status: "ok" });
+  return NextResponse.json({
+    status: "ok",
+    webhook_security: "enabled",
+    environment: process.env.NODE_ENV,
+  });
 }

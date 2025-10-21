@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
           console.log("✅ Payment approved! Applying credits...");
 
           // Actualizar estado del pago
-          await supabase
+          const { error: updateError } = await supabase
             .from("credit_purchases")
             .update({
               payment_id: payment.id?.toString(),
@@ -128,16 +128,34 @@ export async function POST(request: NextRequest) {
             })
             .eq("id", purchase.id);
 
-          // Aplicar créditos
-          const { error: applyError } = await supabase.rpc(
+          if (updateError) {
+            console.error("❌ Error updating purchase status:", updateError);
+            continue;
+          }
+
+          // Aplicar créditos - VERSIÓN CORREGIDA
+          const { data: applyResult, error: applyError } = await supabase.rpc(
             "apply_credit_purchase",
-            { p_purchase_id: purchase.id }
+            {
+              p_purchase_id: purchase.id,
+            }
           );
 
           if (applyError) {
-            console.error(`❌ Error applying credits:`, applyError);
+            console.error("❌ Error applying credits:", applyError);
+          } else if (applyResult && !applyResult.success) {
+            console.error("❌ Credit application failed:", applyResult.error);
+
+            // Si ya estaba aplicado, contar como procesado
+            if (applyResult.already_applied) {
+              console.log("ℹ️ Credits were already applied");
+              processed++;
+            }
           } else {
-            console.log(`💰 Credits applied successfully!`);
+            console.log("✅ Credits applied successfully!", {
+              new_balance: applyResult?.new_balance,
+              credits_added: applyResult?.credits_added,
+            });
             processed++;
           }
         } else if (
@@ -154,8 +172,12 @@ export async function POST(request: NextRequest) {
               payment_status: payment.status,
             })
             .eq("id", purchase.id);
+
+          processed++; // Contar como procesado (aunque sea rechazado)
         } else if (payment.status === "pending") {
           console.log("⏳ Payment still pending");
+        } else if (payment.status === "in_process") {
+          console.log("🔄 Payment in process");
         } else {
           console.log("ℹ️ Payment status:", payment.status);
         }

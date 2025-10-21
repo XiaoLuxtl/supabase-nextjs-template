@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
     if (newStatus === "approved") {
       console.log("💰 Applying credits...");
 
-      const { error: applyError } = await supabase.rpc(
+      const { data: applyResult, error: applyError } = await supabase.rpc(
         "apply_credit_purchase",
         { p_purchase_id: external_reference }
       );
@@ -169,7 +169,27 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      console.log("✅ Credits applied successfully");
+      if (applyResult && !applyResult.success) {
+        console.error("❌ Credit application failed:", applyResult.error);
+        // Si ya estaba aplicado, no es un error grave
+        if (applyResult.already_applied) {
+          console.log("ℹ️ Credits were already applied, continuing...");
+        } else {
+          return NextResponse.json(
+            {
+              error: "Failed to apply credits",
+              details: applyResult.error,
+              status: applyResult.status,
+            },
+            { status: 400 }
+          );
+        }
+      }
+
+      console.log("✅ Credits applied successfully:", {
+        new_balance: applyResult?.new_balance,
+        credits_added: applyResult?.credits_added,
+      });
 
       // Obtener balance actualizado
       const { data: profile } = await supabase
