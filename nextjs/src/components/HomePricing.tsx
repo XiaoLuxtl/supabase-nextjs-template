@@ -344,7 +344,7 @@ const HomePricing = () => {
                     <ul className="space-y-3 mb-8 flex-grow">
                       {pkg.features &&
                         Array.isArray(pkg.features) &&
-                        pkg.features.map((feature, i) => (
+                        pkg.features.map((feature) => (
                           <li key={feature} className="flex items-center gap-2">
                             <Check className="h-5 w-5 text-green-500" />
                             <span className="text-gray-600">{feature}</span>

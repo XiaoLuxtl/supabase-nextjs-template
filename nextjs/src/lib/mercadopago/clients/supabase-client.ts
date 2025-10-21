@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { CreditPurchase, ApplyCreditResult } from "../types";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 /**
  * Cliente de Supabase específico para webhooks (server-side)
@@ -19,9 +20,9 @@ async function createWebhookSupabaseClient() {
         },
         setAll(cookiesToSet) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
+            for (const { name, value, options } of cookiesToSet) {
+              cookieStore.set(name, value, options);
+            }
           } catch {
             // Ignorar en contexto de webhook
           }
@@ -78,7 +79,7 @@ export class SupabaseClient {
     purchaseId: string,
     paymentId: string,
     status: string = "approved"
-  ): Promise<{ error: any }> {
+  ): Promise<{ error: PostgrestError | Error | null }> {
     try {
       const supabase = await this.getClient();
 
@@ -94,22 +95,30 @@ export class SupabaseClient {
       return { error };
     } catch (error) {
       console.error("❌ Error in updatePurchaseStatus:", error);
-      return { error };
+      return { error: error as Error };
     }
   }
 
   static async applyPurchaseCredits(
     purchaseId: string
-  ): Promise<{ data: ApplyCreditResult | null; error: any }> {
+  ): Promise<{
+    data: ApplyCreditResult | null;
+    error: PostgrestError | Error | null;
+  }> {
     try {
       const supabase = await this.getClient();
 
-      return (await supabase.rpc("apply_credit_purchase", {
+      const result = await supabase.rpc("apply_credit_purchase", {
         p_purchase_id: purchaseId,
-      })) as { data: ApplyCreditResult | null; error: any };
+      });
+
+      return result as {
+        data: ApplyCreditResult | null;
+        error: PostgrestError | null;
+      };
     } catch (error) {
       console.error("❌ Error in applyPurchaseCredits:", error);
-      return { data: null, error };
+      return { data: null, error: error as Error };
     }
   }
 
@@ -201,7 +210,7 @@ export class SupabaseClient {
     if (!payload || typeof payload !== "object") return payload;
 
     try {
-      return JSON.parse(JSON.stringify(payload));
+      return structuredClone(payload);
     } catch {
       return { error: "Invalid payload structure" };
     }

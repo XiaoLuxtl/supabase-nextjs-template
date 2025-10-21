@@ -4,6 +4,27 @@ import { CreditApplier } from "./credit-applier";
 import { ProcessResult, CreditPurchase } from "../types";
 import { RateLimiter } from "../security/rate-limiter";
 
+interface MercadoPagoError {
+  status?: number;
+  code?: string;
+  message?: string;
+  response?: {
+    data?: unknown;
+  };
+}
+
+interface MercadoPagoPayment {
+  id: string;
+  status: string;
+  external_reference?: string;
+  transaction_amount?: number;
+  date_created?: string;
+}
+
+interface MercadoPagoMerchantOrder {
+  payments: Array<{ id?: number | string }>;
+}
+
 // Clients para producción con timeouts de seguridad (CORREGIDO)
 const mpClient = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN!,
@@ -48,30 +69,31 @@ export class ProductionProcessor {
         payment = await this.fetchPaymentWithTimeout(paymentId);
         console.log(`✅ Payment ${paymentId} found on attempt ${attempt}`);
         break;
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const mpError = error as MercadoPagoError;
         const isLastAttempt = attempt === 3;
 
-        if (error.status === 404 && !isLastAttempt) {
+        if (mpError.status === 404 && !isLastAttempt) {
           continue;
         }
 
         console.error(
           `❌ Failed to fetch payment ${paymentId}:`,
-          error.message
+          mpError.message
         );
 
         await SupabaseClient.logWebhook(
           paymentId,
           "payment",
-          { error: error.message, attempt },
+          { error: mpError.message, attempt },
           null,
           false,
-          `Payment fetch failed: ${error.message}`
+          `Payment fetch failed: ${mpError.message}`
         );
 
         return {
           success: false,
-          error: `Payment not found: ${error.message}`,
+          error: `Payment not found: ${mpError.message}`,
         };
       }
     }
@@ -88,8 +110,10 @@ export class ProductionProcessor {
       return { success: false, error: "Payment not found after retries" };
     }
 
+    const mpPayment = payment as MercadoPagoPayment;
+
     // Validate external reference
-    const purchaseId = payment.external_reference;
+    const purchaseId = mpPayment.external_reference;
     if (!purchaseId || !this.isValidUUID(purchaseId)) {
       console.error(`❌ Invalid external_reference: ${purchaseId}`);
 
@@ -130,7 +154,7 @@ export class ProductionProcessor {
     // Update purchase record
     const { error: updateError } = await SupabaseClient.updatePurchaseStatus(
       purchaseId,
-      payment.id?.toString() || paymentId
+      mpPayment.id?.toString() || paymentId
     );
 
     if (updateError) {
@@ -215,9 +239,9 @@ export class ProductionProcessor {
     }
 
     try {
-      const merchantOrder = await this.fetchMerchantOrderWithTimeout(
+      const merchantOrder = (await this.fetchMerchantOrderWithTimeout(
         merchantOrderId
-      );
+      )) as MercadoPagoMerchantOrder;
 
       if (!merchantOrder.payments || merchantOrder.payments.length === 0) {
         await SupabaseClient.logWebhook(
@@ -267,10 +291,11 @@ export class ProductionProcessor {
       );
 
       return this.processPayment(paymentId);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const mpError = error as MercadoPagoError;
       console.error(
         `❌ Merchant order error ${merchantOrderId}:`,
-        error.message
+        mpError.message
       );
 
       await SupabaseClient.logWebhook(
@@ -278,16 +303,16 @@ export class ProductionProcessor {
         "merchant_order",
         {
           merchant_order_id: merchantOrderId,
-          error: error.message,
+          error: mpError.message,
         },
         null,
         false,
-        `Merchant order processing failed: ${error.message}`
+        `Merchant order processing failed: ${mpError.message}`
       );
 
       return {
         success: false,
-        error: `Merchant order processing failed: ${error.message}`,
+        error: `Merchant order processing failed: ${mpError.message}`,
       };
     }
   }
@@ -297,9 +322,10 @@ export class ProductionProcessor {
    */
   private static async validatePurchase(
     purchaseId: string,
-    payment: any
+    payment: unknown
   ): Promise<{ valid: boolean; error?: string }> {
     try {
+      const mpPayment = payment as MercadoPagoPayment;
       const purchase = await SupabaseClient.findPurchaseById(purchaseId);
 
       if (!purchase) {
@@ -320,9 +346,9 @@ export class ProductionProcessor {
       }
 
       // Validación de monto (opcional - para prevenir manipulación)
-      if (this.shouldValidateAmount() && payment.transaction_amount) {
+      if (this.shouldValidateAmount() && mpPayment.transaction_amount) {
         const expectedAmount = this.calculateExpectedAmount(purchase);
-        const paymentAmount = payment.transaction_amount;
+        const paymentAmount = mpPayment.transaction_amount;
 
         if (Math.abs(expectedAmount - paymentAmount) > 0.01) {
           console.warn(
@@ -363,12 +389,12 @@ export class ProductionProcessor {
    */
   private static async fetchPaymentWithTimeout(
     paymentId: string
-  ): Promise<any> {
+  ): Promise<unknown> {
     const timeout = RateLimiter.getConfig().mpApiTimeout;
 
     return Promise.race([
       paymentClient.get({ id: paymentId }),
-      new Promise((_, reject) =>
+      new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("MP API timeout")), timeout)
       ),
     ]);
@@ -379,7 +405,7 @@ export class ProductionProcessor {
    */
   private static async fetchMerchantOrderWithTimeout(
     merchantOrderId: string
-  ): Promise<any> {
+  ): Promise<unknown> {
     const timeout = RateLimiter.getConfig().mpApiTimeout;
 
     return Promise.race([
@@ -402,7 +428,7 @@ export class ProductionProcessor {
 
     // Prevenir IDs sospechosos (demasiado grandes o patrones extraños)
     if (isValid) {
-      const idNum = parseInt(resourceId, 10);
+      const idNum = Number.parseInt(resourceId, 10);
       // Rechazar IDs que parezcan de prueba o maliciosos
       if (idNum < 100000 || idNum > 999999999999) {
         return false;

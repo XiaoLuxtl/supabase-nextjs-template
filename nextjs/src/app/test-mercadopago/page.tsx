@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 export default function TestMercadoPagoPage() {
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
   const testMercadoPago = async () => {

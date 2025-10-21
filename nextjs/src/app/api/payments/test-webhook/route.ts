@@ -1,6 +1,5 @@
 // Crea: /app/api/payments/test-webhook/route.ts
-import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
+import { NextResponse } from "next/server";
 
 export async function GET() {
   const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;

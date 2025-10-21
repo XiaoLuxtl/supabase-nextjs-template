@@ -14,11 +14,11 @@ const requestCounts = new Map<string, { count: number; resetTime: number }>();
 export class RateLimiter {
   static isRateLimited(ip: string): boolean {
     const now = Date.now();
-    const windowStart = now - 60000; // 1 minute
+    const windowMs = 60000; // 1 minute
 
     const clientData = requestCounts.get(ip) || {
       count: 0,
-      resetTime: now + 60000,
+      resetTime: now + windowMs,
     };
 
     // Reset counter if window passed

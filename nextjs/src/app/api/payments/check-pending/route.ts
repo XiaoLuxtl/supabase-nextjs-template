@@ -2,6 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
+type PaymentSearchResult = {
+  id?: string;
+  status?: string;
+  status_detail?: string;
+};
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN!,
@@ -81,7 +86,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Buscar pagos asociados a esta preferencia
-        let payments: any[] = [];
+        let payments: PaymentSearchResult[] = [];
 
         try {
           const paymentsResponse = await paymentClient.search({
@@ -91,8 +96,11 @@ export async function POST(request: NextRequest) {
           });
           payments = paymentsResponse.results || [];
           console.log(`📥 Found ${payments.length} payments for preference`);
-        } catch (searchError: any) {
-          console.error("⚠️ Error searching payments:", searchError.message);
+        } catch (searchError: unknown) {
+          console.error(
+            "⚠️ Error searching payments:",
+            (searchError as Error)?.message || String(searchError)
+          );
 
           // En desarrollo, si no encontramos pagos, continuar
           if (process.env.NODE_ENV === "development") {

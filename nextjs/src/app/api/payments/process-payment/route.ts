@@ -79,8 +79,11 @@ export async function POST(request: NextRequest) {
         status: payment.status,
         external_reference: payment.external_reference,
       });
-    } catch (error: any) {
-      console.error("❌ Failed to get payment from MP:", error.message);
+    } catch (error: unknown) {
+      console.error(
+        "❌ Failed to get payment from MP:",
+        (error as Error)?.message || String(error)
+      );
 
       // 🧪 FALLBACK PARA DESARROLLO
       const isDevelopment = process.env.NODE_ENV === "development";

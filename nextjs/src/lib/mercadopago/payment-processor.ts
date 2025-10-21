@@ -1,4 +1,4 @@
-import { ProcessResult, ResourceType } from "./types";
+import { ProcessResult } from "./types";
 import { DevelopmentProcessor } from "./processors/development-processor";
 import { ProductionProcessor } from "./processors/production-processor";
 
@@ -10,8 +10,7 @@ export { PayloadSanitizer } from "./security/payload-sanitizer";
  * Main payment processing function
  */
 export async function processPayment(
-  paymentId: string,
-  eventData?: unknown
+  paymentId: string
 ): Promise<ProcessResult> {
   if (process.env.NODE_ENV === "development") {
     return DevelopmentProcessor.process(paymentId, "payment");
@@ -24,8 +23,7 @@ export async function processPayment(
  * Processes merchant orders from Mercado Pago
  */
 export async function processMerchantOrder(
-  merchantOrderId: string,
-  eventData?: unknown
+  merchantOrderId: string
 ): Promise<ProcessResult> {
   if (process.env.NODE_ENV === "development") {
     return DevelopmentProcessor.process(merchantOrderId, "merchant_order");

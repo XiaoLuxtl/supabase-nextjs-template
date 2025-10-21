@@ -28,17 +28,16 @@ const ENVIRONMENT = {
  * Procesa el webhook en background (no bloqueante)
  */
 async function processInBackground(
-  event: ReturnType<typeof parseWebhookEvent>,
-  signature: string | null
+  event: ReturnType<typeof parseWebhookEvent>
 ): Promise<void> {
   try {
     console.log("🔧 Background processing:", event.type, event.resourceId);
 
     let processResult;
     if (event.type === "payment") {
-      processResult = await processPayment(event.resourceId, event.data);
+      processResult = await processPayment(event.resourceId);
     } else if (event.type === "merchant_order") {
-      processResult = await processMerchantOrder(event.resourceId, event.data);
+      processResult = await processMerchantOrder(event.resourceId);
     }
 
     if (processResult && !processResult.success) {
@@ -78,7 +77,7 @@ async function handleDevelopmentMode(
     );
 
     // Procesar en background sin esperar
-    processInBackground(event, signature).catch(console.error);
+    processInBackground(event).catch(console.error);
 
     return NextResponse.json({
       received: true,
@@ -187,9 +186,9 @@ async function processWebhookEvent(
   // Procesar según tipo (sincrónico en producción)
   let processResult;
   if (event.type === "payment") {
-    processResult = await processPayment(event.resourceId, event.data);
+    processResult = await processPayment(event.resourceId);
   } else if (event.type === "merchant_order") {
-    processResult = await processMerchantOrder(event.resourceId, event.data);
+    processResult = await processMerchantOrder(event.resourceId);
   } else {
     console.log("⚠️ Unsupported event type");
     return NextResponse.json({

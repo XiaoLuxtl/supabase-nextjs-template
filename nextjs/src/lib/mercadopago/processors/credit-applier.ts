@@ -1,5 +1,4 @@
 import { SupabaseClient } from "../clients/supabase-client";
-import { ApplyCreditResult } from "../types";
 
 export class CreditApplier {
   static async applyCredits(

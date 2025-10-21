@@ -25,7 +25,9 @@ export class IPValidator {
 
   private static checkIPInRanges(ip: string, ranges: string[]): boolean {
     // Implementación básica - en producción usar librería como 'ip-range-check'
-    console.log(`🔒 IP validation for: ${ip}`);
+    console.log(
+      `🔒 IP validation for: ${ip}, checking ${ranges.length} ranges`
+    );
 
     // Por ahora retornar true pero loggear para monitoreo
     // Implementar lógica real de validación de IP ranges en producción
