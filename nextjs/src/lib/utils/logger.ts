@@ -1,16 +1,16 @@
 // src/lib/utils/logger.ts
 
 /**
- * Deshabilita console.log y console.info en producción 
- * para reducir el tamaño del bundle y la exposición de logs.
+ * Deshabilita TODOS los console methods en producción
+ * para máxima seguridad y privacidad - no se muestra NADA en producción.
  */
-if (process.env.NODE_ENV === 'production') {
-  // Sobrescribe la función log con una función vacía.
+if (process.env.NODE_ENV === "production") {
+  // Deshabilita completamente todos los métodos de console en producción
   console.log = () => {};
-  
-  // Opcional: También desactiva otras funciones comunes.
   console.info = () => {};
   console.warn = () => {};
-  
-  // Nota: Generalmente se recomienda dejar console.error para debugging en producción.
+  // console.error = () => {};
+  console.debug = () => {};
+  console.trace = () => {};
+  console.table = () => {};
 }
