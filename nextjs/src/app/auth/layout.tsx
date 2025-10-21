@@ -55,7 +55,7 @@ export default function AuthLayout({
         <div className="w-full flex items-center justify-center p-12">
           <div className="space-y-6 max-w-lg">
             <h3 className="text-white text-2xl font-bold mb-8">
-              Usado por latinos de todo el mundo
+              Usado por mexicanos de todos los estados
             </h3>
             {testimonials.map((testimonial, index) => (
               <div
@@ -86,7 +86,7 @@ export default function AuthLayout({
             ))}
             <div className="mt-8 text-center">
               <p className="text-primary-100 text-sm">
-                Únete a cientos de personas en todo el mundo que están creando
+                Únete a cientos de personas en todo el país que están creando
                 sus videos con {productName}
               </p>
             </div>
