@@ -66,12 +66,14 @@ export default function RegisterPage() {
     setError("");
 
     if (!acceptedTerms) {
-      setError("You must accept the Terms of Service and Privacy Policy");
+      setError(
+        "Debes aceptar los Términos de Servicio y la Política de Privacidad"
+      );
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords don't match");
+      setError("Las contraseñas no coinciden");
       return;
     }
 
@@ -90,7 +92,7 @@ export default function RegisterPage() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("An unknown error occurred");
+        setError("Ocurrió un error desconocido");
       }
     } finally {
       setLoading(false);
@@ -111,7 +113,7 @@ export default function RegisterPage() {
             htmlFor="email"
             className="block text-sm font-medium text-gray-700"
           >
-            Correo Electrónico
+            Correo electrónico
           </label>
           <div className="mt-1">
             <input
@@ -153,7 +155,7 @@ export default function RegisterPage() {
             htmlFor="confirmPassword"
             className="block text-sm font-medium text-gray-700"
           >
-            Confirmar Contraseña
+            Confirmar contraseña
           </label>
           <div className="mt-1">
             <input
@@ -189,15 +191,15 @@ export default function RegisterPage() {
                   className="font-medium text-primary-600 hover:text-primary-500"
                   target="_blank"
                 >
-                  Términos de Servicio
+                  términos de servicio
                 </Link>{" "}
-                y{" "}
+                y la{" "}
                 <Link
                   href="/legal/privacy"
                   className="font-medium text-primary-600 hover:text-primary-500"
                   target="_blank"
                 >
-                  Política de Privacidad
+                  política de privacidad
                 </Link>
               </label>
             </div>
@@ -209,7 +211,7 @@ export default function RegisterPage() {
             disabled={loading}
             className="flex w-full justify-center rounded-md border border-transparent bg-primary-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50"
           >
-            {loading ? "Creando cuenta..." : "Crear Cuenta"}
+            {loading ? "Creando cuenta..." : "Crear cuenta"}
           </button>
         </div>
       </form>
@@ -222,7 +224,7 @@ export default function RegisterPage() {
           href="/auth/login"
           className="font-medium text-primary-600 hover:text-primary-500"
         >
-          Iniciar sesión
+          Inicia sesión
         </Link>
       </div>
     </div>
