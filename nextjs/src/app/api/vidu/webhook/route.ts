@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { refundAndMarkFailed } from "@/lib/refund-helper";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -71,14 +72,20 @@ export async function POST(request: NextRequest) {
       }
 
       if (isNSFWError) {
-        const { error: refundError } = await supabase.rpc(
-          "refund_credit_for_video",
-          {
-            p_video_id: generation.id,
-          }
+        const refundResult = await refundAndMarkFailed(
+          generation.id,
+          generation.user_id,
+          "NSFW content detected by Vidu"
+          // No necesitamos pasar currentCredits, la función los obtiene
         );
-        if (refundError) {
-          console.error("Error refunding credit:", refundError);
+
+        if (refundResult.success) {
+          console.log(
+            "✅ NSFW refund processed, new balance:",
+            refundResult.newBalance
+          );
+        } else {
+          console.error("❌ NSFW refund failed:", refundResult.error);
         }
       }
 

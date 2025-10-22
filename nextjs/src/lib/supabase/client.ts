@@ -1,6 +1,6 @@
 // src/lib/supabase/client.ts
 import { createBrowserClient } from "@supabase/ssr";
-import { Database } from "@/lib/types";
+import { Database } from "@/types/database.types";
 import {
   GenericSupabaseClient,
   SassClient,

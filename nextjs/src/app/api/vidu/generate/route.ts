@@ -2,70 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { refineViduPrompt } from "@/lib/prompt-refiner";
 import { describeImage, checkNSFWContent } from "@/lib/ai-vision";
+import { refundAndMarkFailed } from "@/lib/refund-helper";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.PRIVATE_SUPABASE_SERVICE_KEY!
 );
-
-// Función helper para marcar video como fallido y reembolsar créditos
-async function refundAndMarkFailed(
-  videoId: string,
-  userId: string,
-  errorMessage: string,
-  currentCredits: number
-) {
-  console.log("Marking video as failed and refunding credit...");
-
-  // PRIMERO: Reembolsar crédito usando la RPC (mientras credits_used = 1)
-  const { data: refundResult, error: refundError } = await supabase.rpc(
-    "refund_credits_for_video",
-    {
-      p_video_id: videoId,
-    }
-  );
-
-  if (refundError) {
-    console.error("RPC refund failed:", refundError);
-    // Intentar reembolso directo si la RPC falla
-    console.log("Attempting direct refund...");
-    const { error: directRefundError } = await supabase
-      .from("user_profiles")
-      .update({ credits_balance: currentCredits + 1 })
-      .eq("id", userId);
-
-    if (directRefundError) {
-      console.error("Direct refund also failed:", directRefundError);
-    } else {
-      console.log("Direct refund successful");
-    }
-  } else {
-    console.log("RPC refund successful, result:", refundResult);
-  }
-
-  // SEGUNDO: Marcar como failed y credits_used = 0 (reembolsado)
-  const { error: updateError } = await supabase
-    .from("video_generations")
-    .update({
-      status: "failed",
-      error_message: errorMessage,
-      credits_used: 0, // Reembolsado
-    })
-    .eq("id", videoId);
-
-  if (updateError) {
-    console.error("Error updating video to failed:", updateError);
-  }
-
-  // Obtener créditos reembolsados
-  const { data: refundedProfile } = await supabase
-    .from("user_profiles")
-    .select("credits_balance")
-    .eq("id", userId)
-    .single();
-
-  return refundedProfile?.credits_balance ?? currentCredits + 1;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -308,7 +250,7 @@ export async function POST(request: NextRequest) {
     if (!viduResponse.ok) {
       console.error("Vidu API error:", responseText);
 
-      const finalCredits = await refundAndMarkFailed(
+      const refundResult = await refundAndMarkFailed(
         generation.id,
         user_id,
         `Vidu API error: ${responseText}`,
@@ -318,7 +260,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: `Vidu API error: ${responseText}`,
-        updatedCredits: finalCredits,
+        updatedCredits: refundResult.newBalance || updatedCredits,
       });
     }
 

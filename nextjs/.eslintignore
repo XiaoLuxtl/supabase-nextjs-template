@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+*.tgz
+*.tar.gz
+
+# Production builds
+.next/
+out/
+dist/
+build/
+
+# Logs
+*.log
+
+# Environment files
+.env*
+!.env.example
+
+# IDE/Editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files with security in name (los que quieres ignorar)
+*.security.test.ts
+*.security.test.js
+
+# Otros archivos de test que quizás también quieras ignorar
+# **/*.test.ts
+# **/*.spec.ts
