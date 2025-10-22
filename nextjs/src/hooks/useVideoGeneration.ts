@@ -4,29 +4,34 @@ import { User, useGlobal } from "@/lib/context/GlobalContext";
 import { processImageForVidu } from "@/lib/image-processor";
 import { logger } from "@/lib/utils/logger";
 
-// Timeout para la generación de video (3 minutos - Vidu puede tardar hasta 2 minutos)
+// Timeout para la generación de video (3 minutos)
 const GENERATION_TIMEOUT = 180000;
 
-// Función para convertir errores técnicos en mensajes user-friendly
-const getUserFriendlyErrorMessage = (errorMessage: string): string => {
-  if (errorMessage.includes("Vidu API error")) {
-    return "Error en el servicio de generación de video. Los créditos han sido reembolsados. Por favor, intenta nuevamente en unos minutos.";
+// Función mejorada para errores
+const getUserFriendlyErrorMessage = (
+  errorMessage: string,
+  statusCode?: number
+): string => {
+  // Error de timeout
+  if (errorMessage.includes("AbortError") || errorMessage.includes("tiempo")) {
+    return "La generación tomó demasiado tiempo. Los créditos han sido reembolsados. Por favor, intenta nuevamente.";
   }
+
+  // Error de API Vidu
+  if (errorMessage.includes("Vidu API error") || statusCode === 403) {
+    return "Error en el servicio de generación de video (cuota excedida o acceso denegado). Los créditos han sido reembolsados. Por favor, intenta más tarde.";
+  }
+
   if (errorMessage.includes("Contenido no permitido")) {
     return "La imagen contiene contenido no permitido. Por favor, usa una imagen diferente.";
   }
+
   if (errorMessage.includes("Créditos insuficientes")) {
     return "No tienes suficientes créditos. Compra más créditos para continuar.";
   }
-  if (errorMessage.includes("Error al consumir crédito")) {
-    return "Error al procesar el pago. Por favor, intenta nuevamente.";
-  }
-  if (errorMessage.includes("failsafe activado")) {
-    return "Error de validación interna. Los créditos han sido reembolsados. Por favor, contacta soporte.";
-  }
 
-  // Default message
-  return "Error al generar el video. Por favor, intenta nuevamente o contacta soporte si el problema persiste.";
+  // Default message mejorado
+  return `Error al generar el video: ${errorMessage}.`;
 };
 
 interface UseVideoGenerationProps {
@@ -72,13 +77,17 @@ export function useVideoGeneration({
       return;
     }
 
+    let controller: AbortController | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
+
     try {
       const processed = await processImageForVidu(selectedFile);
 
       // Crear AbortController para timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
+      controller = new AbortController();
+      timeoutId = setTimeout(() => {
+        logger.warn("Generation timeout reached, aborting...");
+        controller?.abort();
       }, GENERATION_TIMEOUT);
 
       const response = await fetch("/api/vidu/generate", {
@@ -94,70 +103,74 @@ export function useVideoGeneration({
         signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
+      // Limpiar timeout inmediatamente después de la respuesta
+      if (timeoutId) clearTimeout(timeoutId);
 
       logger.info("API response received", {
         status: response.status,
         ok: response.ok,
+        statusText: response.statusText,
       });
 
       let data;
       try {
         const responseText = await response.text();
         logger.debug("API raw response", { responseText });
-        data = JSON.parse(responseText);
+        data = responseText ? JSON.parse(responseText) : {};
         logger.debug("API parsed data", { data });
       } catch (parseError) {
         logger.error("Failed to parse API response", parseError);
         throw new Error("Respuesta inválida del servidor");
       }
 
+      // ✅ MEJORADO: Manejar tanto response.ok como data.success
       if (!response.ok || (data && !data.success)) {
         logger.warn("API returned error", {
           status: response.status,
           data,
+          ok: response.ok,
         });
+
         const errorMessage =
-          data?.error || "Error desconocido al generar video";
-        // Refrescar balance de créditos (créditos reembolsados)
+          data?.error || response.statusText || `Error HTTP ${response.status}`;
+
+        // Refrescar balance y videos inmediatamente
         await refreshCreditsBalance();
-        // Refrescar lista de videos inmediatamente para mostrar estado fallido
         if (refreshVideos) {
           await refreshVideos();
         }
-        // Mostrar mensaje de error mejorado
-        const userFriendlyMessage = getUserFriendlyErrorMessage(errorMessage);
+
+        // Mensaje de error con status code
+        const userFriendlyMessage = getUserFriendlyErrorMessage(
+          errorMessage,
+          response.status
+        );
         setError(userFriendlyMessage);
         throw new Error(userFriendlyMessage);
       }
 
-      // ✅ NO actualizar manualmente - el API ya devuelve créditos actualizados
-      // El GlobalContext se actualiza automáticamente via suscripción en tiempo real
-
-      // Limpiar formulario solo si fue exitoso
+      // ✅ ÉXITO: Limpiar formulario
       if (data.success) {
         resetImage();
         setPrompt("");
         localStorage.setItem("lastSubmission", Date.now().toString());
-        logger.info("Video generation completed, credits updated");
-      } else {
-        logger.warn("Video generation failed but credits were consumed");
+        logger.info("Video generation completed successfully");
       }
     } catch (err: unknown) {
       logger.error("Generate error occurred", err);
 
-      // Refrescar balance de créditos en caso de error (créditos reembolsados)
+      // Refrescar balance y videos en CUALQUIER error
       await refreshCreditsBalance();
-      // Refrescar lista de videos inmediatamente para mostrar estado fallido
       if (refreshVideos) {
         await refreshVideos();
       }
 
       let errorMessage = "Error desconocido al generar video";
+
       if (err instanceof Error) {
         if (err.name === "AbortError") {
           errorMessage =
-            "La generación tomó demasiado tiempo. Por favor, intenta nuevamente.";
+            "La generación tomó demasiado tiempo y fue cancelada automáticamente.";
         } else {
           errorMessage = err.message;
         }
@@ -169,6 +182,8 @@ export function useVideoGeneration({
       const userFriendlyMessage = getUserFriendlyErrorMessage(errorMessage);
       setError(userFriendlyMessage);
     } finally {
+      // Limpiar timeout si aún existe
+      if (timeoutId) clearTimeout(timeoutId);
       setIsGenerating(false);
     }
   }, [
