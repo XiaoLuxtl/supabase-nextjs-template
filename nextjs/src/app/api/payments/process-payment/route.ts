@@ -2,6 +2,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MercadoPagoConfig, Payment } from "mercadopago";
 import { createClient } from "@supabase/supabase-js";
+import { authenticateUser, validateResourceOwnership } from "@/lib/auth";
+import { logger } from "@/lib/utils/logger";
+
+// Type definitions
+interface ProcessPaymentRequest {
+  payment_id: string;
+  external_reference: string;
+  user_id?: string; // Optional for webhook calls
+}
+
+interface CreditPurchase {
+  id: string;
+  user_id: string;
+  package_id: string;
+  package_name: string;
+  credits_amount: number;
+  price_paid_mxn: number;
+  payment_method: string;
+  payment_status: string;
+  payment_id?: string;
+  applied_at?: string;
+  preference_id?: string;
+}
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN!,
@@ -14,204 +37,291 @@ const supabase = createClient(
   process.env.PRIVATE_SUPABASE_SERVICE_KEY!
 );
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { payment_id, external_reference } = body;
+// Helper function to validate request and ownership
+async function validatePaymentRequest(
+  request: NextRequest,
+  body: ProcessPaymentRequest
+) {
+  const { payment_id, external_reference, user_id } = body;
 
-    console.log("🔍 Processing payment:", { payment_id, external_reference });
+  // Check if this is a webhook call (no user auth) or user-initiated call
+  const authResult = await authenticateUser(request);
 
-    if (!payment_id || !external_reference) {
-      return NextResponse.json(
-        { error: "payment_id and external_reference required" },
-        { status: 400 }
-      );
+  // If user is authenticated, validate ownership
+  if (authResult.success && authResult.user) {
+    const authenticatedUserId = authResult.user.id;
+
+    // If user_id provided in body, validate it matches authenticated user
+    if (user_id && !validateResourceOwnership(authenticatedUserId, user_id)) {
+      logger.warn("User attempted to process payment for different user", {
+        authenticatedUserId,
+        requestedUserId: user_id,
+        paymentId: payment_id,
+        externalReference: external_reference,
+        ip:
+          request.headers.get("x-forwarded-for") ||
+          request.headers.get("x-real-ip") ||
+          "unknown",
+      });
+      return {
+        error: "Forbidden: Cannot process payments for other users",
+        status: 403,
+      };
     }
 
-    // 1️⃣ Verificar que la compra existe
+    // Get purchase to validate ownership
     const { data: purchase, error: purchaseError } = await supabase
       .from("credit_purchases")
-      .select("*")
+      .select("user_id")
       .eq("id", external_reference)
       .single();
 
     if (purchaseError || !purchase) {
-      console.error("❌ Purchase not found:", external_reference);
-      return NextResponse.json(
-        { error: "Purchase not found" },
-        { status: 404 }
-      );
+      logger.warn("Purchase not found during ownership validation", {
+        purchaseId: external_reference,
+        userId: authenticatedUserId,
+      });
+      return { error: "Purchase not found", status: 404 };
     }
 
-    console.log("✅ Purchase found:", {
-      id: purchase.id,
-      status: purchase.payment_status,
-      applied: !!purchase.applied_at,
+    if (!validateResourceOwnership(authenticatedUserId, purchase.user_id)) {
+      logger.warn(
+        "User attempted to process payment for purchase belonging to different user",
+        {
+          authenticatedUserId,
+          purchaseUserId: purchase.user_id,
+          purchaseId: external_reference,
+          paymentId: payment_id,
+          ip:
+            request.headers.get("x-forwarded-for") ||
+            request.headers.get("x-real-ip") ||
+            "unknown",
+        }
+      );
+      return {
+        error: "Forbidden: This payment does not belong to you",
+        status: 403,
+      };
+    }
+
+    return { authenticatedUserId, isWebhookCall: false };
+  }
+
+  // For webhook calls (no authentication), we still validate the purchase exists
+  // but don't enforce ownership since webhooks come from MercadoPago
+  const { data: purchase, error: purchaseError } = await supabase
+    .from("credit_purchases")
+    .select("user_id")
+    .eq("id", external_reference)
+    .single();
+
+  if (purchaseError || !purchase) {
+    logger.warn("Purchase not found in webhook call", {
+      purchaseId: external_reference,
+      paymentId: payment_id,
+      ip:
+        request.headers.get("x-forwarded-for") ||
+        request.headers.get("x-real-ip") ||
+        "unknown",
+    });
+    return { error: "Purchase not found", status: 404 };
+  }
+
+  logger.info("Processing webhook payment", {
+    purchaseId: external_reference,
+    paymentId: payment_id,
+    purchaseUserId: purchase.user_id,
+    ip:
+      request.headers.get("x-forwarded-for") ||
+      request.headers.get("x-real-ip") ||
+      "unknown",
+  });
+
+  return { purchaseUserId: purchase.user_id, isWebhookCall: true };
+}
+
+// Main processing logic
+async function processPaymentLogic(
+  request: NextRequest,
+  body: ProcessPaymentRequest
+) {
+  const { payment_id, external_reference } = body;
+
+  // 🔐 VALIDACIÓN DE AUTENTICACIÓN Y PROPIEDAD
+  const validationResult = await validatePaymentRequest(request, body);
+  if (validationResult.error) {
+    return NextResponse.json(
+      { error: validationResult.error },
+      { status: validationResult.status }
+    );
+  }
+
+  // 1️⃣ Verificar que la compra existe
+  const { data: purchase, error: purchaseError } = await supabase
+    .from("credit_purchases")
+    .select("*")
+    .eq("id", external_reference)
+    .single();
+
+  if (purchaseError || !purchase) {
+    logger.error("Purchase not found", {
+      purchaseId: external_reference,
+      paymentId: payment_id,
+      error: purchaseError?.message,
+    });
+    return NextResponse.json({ error: "Purchase not found" }, { status: 404 });
+  }
+
+  // 2️⃣ Si ya se aplicó, retornar éxito inmediatamente
+  if (purchase.applied_at) {
+    logger.info("Credits already applied for purchase", {
+      purchaseId: purchase.id,
+      appliedAt: purchase.applied_at,
     });
 
-    // 2️⃣ Si ya se aplicó, retornar éxito inmediatamente
-    if (purchase.applied_at) {
-      console.log("ℹ️ Credits already applied");
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("credits_balance")
+      .eq("id", purchase.user_id)
+      .single();
 
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("credits_balance")
-        .eq("id", purchase.user_id)
-        .single();
-
-      return NextResponse.json({
-        success: true,
-        already_applied: true,
-        status: purchase.payment_status,
-        new_balance: profile?.credits_balance || 0,
-      });
-    }
-
-    // 3️⃣ Obtener el pago de Mercado Pago
-    let payment;
-    let usedFallback = false;
-
-    try {
-      console.log("📞 Fetching payment from Mercado Pago...");
-      payment = await paymentClient.get({ id: payment_id });
-      console.log("✅ Payment fetched:", {
-        id: payment.id,
-        status: payment.status,
-        external_reference: payment.external_reference,
-      });
-    } catch (error: unknown) {
-      console.error(
-        "❌ Failed to get payment from MP:",
-        (error as Error)?.message || String(error)
-      );
-
-      // 🧪 FALLBACK PARA DESARROLLO
-      const isDevelopment = process.env.NODE_ENV === "development";
-      const isTestCredentials =
-        process.env.MERCADOPAGO_ACCESS_TOKEN?.includes("APP_USR");
-
-      if (isDevelopment || isTestCredentials) {
-        console.log("🧪 DEV/TEST mode: Using fallback (treating as approved)");
-        usedFallback = true;
-        payment = {
-          id: payment_id,
-          status: "approved",
-          external_reference: external_reference,
-        };
-      } else {
-        // En producción, si el pago no existe, es retryable
-        return NextResponse.json(
-          {
-            error: "Payment not found in Mercado Pago",
-            retryable: true,
-            details: "El pago está siendo procesado. Intenta en unos segundos.",
-          },
-          { status: 404 }
-        );
-      }
-    }
-
-    // 4️⃣ Verificar que el external_reference coincide
-    if (!usedFallback && payment.external_reference !== external_reference) {
-      console.error("❌ External reference mismatch:", {
-        expected: external_reference,
-        received: payment.external_reference,
-      });
-      return NextResponse.json(
-        { error: "External reference mismatch" },
-        { status: 400 }
-      );
-    }
-
-    // 5️⃣ Mapear estado
-    let newStatus = "pending";
-    if (payment.status === "approved") {
-      newStatus = "approved";
-    } else if (payment.status === "rejected") {
-      newStatus = "rejected";
-    } else if (payment.status === "cancelled") {
-      newStatus = "cancelled";
-    }
-
-    console.log("📊 Payment status:", newStatus);
-
-    // 6️⃣ Actualizar estado en la base de datos
-    const { error: updateError } = await supabase
-      .from("credit_purchases")
-      .update({
-        payment_id: payment.id?.toString(),
-        payment_status: newStatus,
-      })
-      .eq("id", external_reference);
-
-    if (updateError) {
-      console.error("❌ Error updating purchase:", updateError);
-      return NextResponse.json(
-        { error: "Failed to update purchase" },
-        { status: 500 }
-      );
-    }
-
-    // 7️⃣ Si fue aprobado, aplicar créditos
-    if (newStatus === "approved") {
-      console.log("💰 Applying credits...");
-
-      const { data: applyResult, error: applyError } = await supabase.rpc(
-        "apply_credit_purchase",
-        { p_purchase_id: external_reference }
-      );
-
-      if (applyError) {
-        console.error("❌ Error applying credits:", applyError);
-        return NextResponse.json(
-          {
-            error: "Failed to apply credits",
-            details: applyError.message,
-          },
-          { status: 500 }
-        );
-      }
-
-      if (applyResult && !applyResult.success) {
-        console.error("❌ Credit application failed:", applyResult.error);
-        // Si ya estaba aplicado, no es un error grave
-        if (applyResult.already_applied) {
-          console.log("ℹ️ Credits were already applied, continuing...");
-        } else {
-          return NextResponse.json(
-            {
-              error: "Failed to apply credits",
-              details: applyResult.error,
-              status: applyResult.status,
-            },
-            { status: 400 }
-          );
-        }
-      }
-
-      console.log("✅ Credits applied successfully:", {
-        new_balance: applyResult?.new_balance,
-        credits_added: applyResult?.credits_added,
-      });
-
-      // Obtener balance actualizado
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("credits_balance")
-        .eq("id", purchase.user_id)
-        .single();
-
-      return NextResponse.json({
-        success: true,
-        status: newStatus,
-        credits_applied: true,
-        new_balance: profile?.credits_balance || 0,
-        used_fallback: usedFallback,
-      });
-    }
-
-    // 8️⃣ Si no fue aprobado, retornar el estado
     return NextResponse.json({
+      success: true,
+      already_applied: true,
+      status: purchase.payment_status,
+      new_balance: profile?.credits_balance || 0,
+    });
+  }
+
+  // 3️⃣ Obtener el pago de Mercado Pago
+  const { payment, usedFallback } = await getMercadoPagoPayment(
+    payment_id,
+    external_reference
+  );
+
+  // 4️⃣ Verificar que el external_reference coincide
+  if (!usedFallback && payment.external_reference !== external_reference) {
+    logger.error("External reference mismatch", {
+      expected: external_reference,
+      received: payment.external_reference,
+      paymentId: payment_id,
+    });
+    return NextResponse.json(
+      { error: "External reference mismatch" },
+      { status: 400 }
+    );
+  }
+
+  // 5️⃣ Mapear estado
+  let newStatus = "pending";
+  if (payment.status === "approved") {
+    newStatus = "approved";
+  } else if (payment.status === "rejected") {
+    newStatus = "rejected";
+  } else if (payment.status === "cancelled") {
+    newStatus = "cancelled";
+  }
+
+  // 6️⃣ Actualizar estado en la base de datos
+  const { error: updateError } = await supabase
+    .from("credit_purchases")
+    .update({
+      payment_id: payment.id?.toString(),
+      payment_status: newStatus,
+    })
+    .eq("id", external_reference);
+
+  if (updateError) {
+    logger.error("Error updating purchase status", {
+      purchaseId: external_reference,
+      paymentId: payment_id,
+      newStatus,
+      error: updateError,
+    });
+    return NextResponse.json(
+      { error: "Failed to update purchase" },
+      { status: 500 }
+    );
+  }
+
+  // 7️⃣ Aplicar créditos si fue aprobado
+  return await applyCreditsIfApproved(
+    external_reference,
+    payment_id,
+    newStatus,
+    purchase,
+    usedFallback
+  );
+}
+
+// Helper function to get payment from MercadoPago
+async function getMercadoPagoPayment(
+  payment_id: string,
+  external_reference: string
+) {
+  let payment;
+  let usedFallback = false;
+
+  try {
+    logger.info("Fetching payment from Mercado Pago", {
+      paymentId: payment_id,
+    });
+    payment = await paymentClient.get({ id: payment_id });
+    logger.info("Payment fetched successfully", {
+      paymentId: payment.id,
+      status: payment.status,
+      externalReference: payment.external_reference,
+    });
+  } catch (error: unknown) {
+    logger.error("Failed to get payment from Mercado Pago", {
+      paymentId: payment_id,
+      error: (error as Error)?.message || String(error),
+    });
+
+    // 🧪 FALLBACK PARA DESARROLLO
+    const isDevelopment = process.env.NODE_ENV === "development";
+    const isTestCredentials =
+      process.env.MERCADOPAGO_ACCESS_TOKEN?.includes("APP_USR");
+
+    if (isDevelopment || isTestCredentials) {
+      logger.warn("DEV/TEST mode: Using fallback payment approval", {
+        paymentId: payment_id,
+        externalReference: external_reference,
+      });
+      usedFallback = true;
+      payment = {
+        id: payment_id,
+        status: "approved",
+        external_reference: external_reference,
+      };
+    } else {
+      // En producción, si el pago no existe, es retryable
+      logger.warn("Payment not found in Mercado Pago (production)", {
+        paymentId: payment_id,
+        externalReference: external_reference,
+      });
+      throw new Error("PAYMENT_NOT_FOUND");
+    }
+  }
+
+  return { payment, usedFallback };
+}
+
+// Helper function to apply credits
+async function applyCreditsIfApproved(
+  external_reference: string,
+  payment_id: string,
+  newStatus: string,
+  purchase: CreditPurchase,
+  usedFallback: boolean
+) {
+  if (newStatus !== "approved") {
+    logger.info("Payment not approved, skipping credit application", {
+      purchaseId: external_reference,
+      paymentId: payment_id,
+      status: newStatus,
+    });
+    return {
       success: true,
       status: newStatus,
       credits_applied: false,
@@ -219,13 +329,104 @@ export async function POST(request: NextRequest) {
         newStatus === "pending"
           ? "El pago está pendiente"
           : "El pago no fue aprobado",
+    };
+  }
+
+  logger.info("Applying credits for approved payment", {
+    purchaseId: external_reference,
+    paymentId: payment_id,
+    userId: purchase.user_id,
+  });
+
+  const { data: applyResult, error: applyError } = await supabase.rpc(
+    "apply_credit_purchase",
+    { p_purchase_id: external_reference }
+  );
+
+  if (applyError) {
+    logger.error("Error applying credits via RPC", {
+      purchaseId: external_reference,
+      paymentId: payment_id,
+      error: applyError,
     });
+    throw new Error(`Failed to apply credits: ${applyError.message}`);
+  }
+
+  if (applyResult && !applyResult.success) {
+    logger.error("Credit application failed", {
+      purchaseId: external_reference,
+      error: applyResult.error,
+      alreadyApplied: applyResult.already_applied,
+    });
+
+    if (!applyResult.already_applied) {
+      throw new Error(`Credit application failed: ${applyResult.error}`);
+    }
+    // Si ya estaba aplicado, continuar
+    logger.info("Credits were already applied, continuing", {
+      purchaseId: external_reference,
+    });
+  }
+
+  logger.info("Credits applied successfully", {
+    purchaseId: external_reference,
+    newBalance: applyResult?.new_balance,
+    creditsAdded: applyResult?.credits_added,
+    userId: purchase.user_id,
+  });
+
+  // Obtener balance actualizado
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("credits_balance")
+    .eq("id", purchase.user_id)
+    .single();
+
+  return {
+    success: true,
+    status: newStatus,
+    credits_applied: true,
+    new_balance: profile?.credits_balance || 0,
+    used_fallback: usedFallback,
+  };
+}
+
+export async function POST(request: NextRequest) {
+  let body: ProcessPaymentRequest = { payment_id: "", external_reference: "" };
+
+  try {
+    body = (await request.json()) as ProcessPaymentRequest;
+    const { payment_id, external_reference } = body;
+
+    // ✅ VALIDACIÓN DE ENTRADA BÁSICA
+    if (!payment_id || !external_reference) {
+      logger.warn("Missing required parameters in payment processing", {
+        paymentId: payment_id,
+        externalReference: external_reference,
+      });
+      return NextResponse.json(
+        { error: "payment_id and external_reference required" },
+        { status: 400 }
+      );
+    }
+
+    // Delegar toda la lógica de procesamiento
+    return await processPaymentLogic(request, body);
   } catch (error) {
-    console.error("❌ Process payment error:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+
+    logger.error("Process payment error", {
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+      paymentId: body.payment_id,
+      externalReference: body.external_reference,
+    });
+
     return NextResponse.json(
       {
         error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: errorMessage,
       },
       { status: 500 }
     );
