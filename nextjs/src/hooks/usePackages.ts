@@ -1,13 +1,15 @@
 // src/hooks/usePackages.ts
-import { useEffect, useState } from 'react';
-import { createSPAClient } from '@/lib/supabase/client';
-import type { CreditPackage } from '@/types/database.types';
+import { useEffect, useState } from "react";
+import { createSPAClient } from "@/lib/supabase/client";
+import type { Database } from "@/types/database.types";
 
+// Usar el tipo exacto de Supabase
+type CreditPackage = Database["public"]["Tables"]["credit_packages"]["Row"];
 
 export function usePackages() {
   const [packages, setPackages] = useState<CreditPackage[]>(() => {
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem('credit_packages');
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("credit_packages");
       if (cached) {
         try {
           return JSON.parse(cached);
@@ -34,39 +36,39 @@ export function usePackages() {
   async function loadPackages() {
     try {
       const supabase = createSPAClient();
-      
+
       // La consulta retorna un tipo genérico que necesitamos ajustar
       const { data, error: fetchError } = await supabase
-        .from('credit_packages')
-        .select('*')
-        .eq('is_active', true)
-        .order('sort_order');
+        .from("credit_packages")
+        .select("*")
+        .eq("is_active", true)
+        .order("sort_order");
 
       if (fetchError) throw fetchError;
-      
+
       // APLICAR TYPE ASSERTION AQUÍ 👇
       const packagesData = (data || []) as unknown as CreditPackage[];
 
       // setPackages ahora recibe el tipo CreditPackage[]
-      setPackages(packagesData); 
-      
-      if (typeof window !== 'undefined') {
+      setPackages(packagesData);
+
+      if (typeof window !== "undefined") {
         // También aseguramos el tipo al guardar en localStorage para mantener la consistencia
-        localStorage.setItem('credit_packages', JSON.stringify(packagesData));
+        localStorage.setItem("credit_packages", JSON.stringify(packagesData));
       }
       setError(null);
     } catch (err) {
-      console.error('Error loading packages:', err);
-      setError('Error al cargar paquetes');
+      console.error("Error loading packages:", err);
+      setError("Error al cargar paquetes");
     } finally {
       setLoading(false);
     }
   }
 
   // Helpers
-  const fixedPackages = packages.filter(p => p.package_type === 'fixed');
-  const customPackage = packages.find(p => p.package_type === 'custom');
-  const popularPackage = packages.find(p => p.is_popular);
+  const fixedPackages = packages.filter((p) => p.package_type === "fixed");
+  const customPackage = packages.find((p) => p.package_type === "custom");
+  const popularPackage = packages.find((p) => p.is_popular);
 
   return {
     packages,
@@ -75,6 +77,6 @@ export function usePackages() {
     popularPackage,
     loading,
     error,
-    refresh: loadPackages
+    refresh: loadPackages,
   };
 }

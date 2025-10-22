@@ -1,8 +1,12 @@
 // src/components/VideoList.tsx
 import React from "react";
 import { Loader2 } from "lucide-react";
-import { VideoGeneration } from "@/types/database.types";
+import type { Database } from "@/types/database.types";
 import styles from "@/styles/video-list.module.css";
+
+type VideoGeneration = Database["public"]["Tables"]["video_generations"]["Row"];
+// ✅ Excluir null con NonNullable
+type VideoStatus = NonNullable<VideoGeneration["status"]>;
 
 interface VideoListProps {
   sliderRef: React.RefObject<HTMLDivElement | null>;
@@ -17,7 +21,10 @@ const VideoList = function VideoList({
   selectedVideo,
   onSelectVideo,
 }: VideoListProps) {
-  const statusMap = {
+  const statusMap: Record<
+    VideoStatus,
+    { classes: string; text: string; icon: React.ReactNode | null }
+  > = {
     pending: {
       classes: "bg-yellow-600/30 text-yellow-400",
       text: "Pendiente",
@@ -61,7 +68,10 @@ const VideoList = function VideoList({
         </p>
       ) : (
         videos.map((video) => {
-          const statusInfo = statusMap[video.status] || statusMap.failed;
+          // ✅ Type-safe con fallback para null
+          const statusInfo = video.status
+            ? statusMap[video.status]
+            : statusMap.failed;
           const isSelected = selectedVideo?.id === video.id;
 
           return (
@@ -116,7 +126,7 @@ const VideoList = function VideoList({
                 </p>
               )}
               <p className="text-zinc-500 text-xs mt-1 pointer-events-none">
-                {new Date(video.created_at).toLocaleDateString()}
+                {new Date(video.created_at ?? new Date()).toLocaleDateString()}
               </p>
             </button>
           );

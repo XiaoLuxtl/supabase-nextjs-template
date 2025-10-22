@@ -1,193 +1,566 @@
-/**
- * Tipos TypeScript para las tablas de Supabase
- * Generados manualmente basados en el schema
- */
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
 
-export interface UserProfile {
-  id: string;
-  email: string;
-  full_name: string | null;
-  phone: string | null;
-  avatar_url: string | null;
-  credits_balance: number;
-  total_credits_purchased: number;
-  total_videos_generated: number;
-  daily_generation_limit: number;
-  daily_generations_used: number;
-  daily_reset_date: string;
-  created_at: string;
-  updated_at: string;
-  last_login_at: string | null;
-}
-
-export interface CreditPackage {
-  id: string;
-  name: string;
-  slug: string;
-  package_type: "fixed" | "custom";
-  credits_amount: number | null; // null si es custom
-  price_mxn: number | null; // null si es custom
-  min_credits: number | null; // solo para custom
-  price_per_credit: number | null; // solo para custom
-  description: string | null;
-  features: string[] | null;
-  is_active: boolean;
-  is_popular: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CreditPurchase {
-  id: string;
-  user_id: string;
-  package_id: string | null;
-  package_name: string;
-  credits_amount: number;
-  price_paid_mxn: number;
-  payment_method: string;
-  payment_id: string | null;
-  preference_id: string | null;
-  payment_status:
-    | "pending"
-    | "approved"
-    | "rejected"
-    | "cancelled"
-    | "refunded";
-  notes: string | null;
-  applied_at: string | null;
-  created_at: string;
-}
-
-export interface VideoGeneration {
-  id: string;
-  user_id: string;
-  prompt: string;
-  translated_prompt_en: string;
-  model: string;
-  duration: number;
-  aspect_ratio: string;
-  resolution: string;
-  vidu_task_id: string | null;
-  vidu_creation_id: string | null;
-  status:
-    | "pending"
-    | "queued"
-    | "processing"
-    | "completed"
-    | "failed"
-    | "cancelled";
-  credits_used: number;
-  video_url: string | null;
-  cover_url: string | null;
-  video_duration_actual: number | null;
-  video_fps: number | null;
-  bgm: boolean;
-  error_message: string | null;
-  error_code: string | null;
-  retry_count: number;
-  max_retries: number;
-  vidu_full_response: ViduSuccessResponse | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-  preview_url?: string | null;
-}
-
-export interface CreditTransaction {
-  id: string;
-  user_id: string;
-  amount: number;
-  balance_after: number;
-  transaction_type:
-    | "purchase"
-    | "video_generation"
-    | "refund"
-    | "admin_adjustment"
-    | "bonus";
-  purchase_id: string | null;
-  video_id: string | null;
-  description: string;
-  created_at: string;
-}
-
-export interface ViduWebhookLog {
-  id: string;
-  vidu_task_id: string | null;
-  payload: unknown; // Replaces `any` for safer typing
-  processed: boolean;
-  error_message: string | null;
-  received_at: string;
-}
-
-// ============================================
-// TIPOS DE RESPUESTA DE VIDU API
-// ============================================
-
-export interface ViduSuccessResponse {
-  state: "success";
-  err_code: "";
-  creations: Array<{
-    id: string;
-    url: string;
-    cover_url: string;
-    watermarked_url: string;
-    moderation_url: string[];
-    video: {
-      duration: number;
-      fps: number;
-      resolution: string | null;
-    };
-  }>;
-  id: string; // task_id
-  credits: number;
-  bgm: boolean;
-  payload: string;
-  cus_priority: number;
-  off_peak: boolean;
-}
-
-export interface ViduErrorResponse {
-  state: "error";
-  err_code: string;
-  err_msg: string;
-}
-
-export type ViduResponse = ViduSuccessResponse | ViduErrorResponse;
-
-// ============================================
-// TIPOS DE REQUEST
-// ============================================
-
-export interface CreateVideoRequest {
-  prompt: string;
-  image_base64: string;
-}
-
-export interface CreatePurchaseRequest {
-  package_id: string;
-  credits_amount?: number; // Solo para custom packages
-}
-
-// ============================================
-// TIPOS DE RESPONSE DE LA API
-// ============================================
-
-export interface ApiResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  code?: string;
-}
-
-export interface UserDashboard {
-  profile: UserProfile;
-  recent_videos: VideoGeneration[];
-  recent_purchases: CreditPurchase[];
-  stats: {
-    total_videos: number;
-    completed_videos: number;
-    pending_videos: number;
-    total_spent: number;
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "13.0.5";
   };
+  public: {
+    Tables: {
+      credit_packages: {
+        Row: {
+          created_at: string | null;
+          credits_amount: number | null;
+          description: string | null;
+          features: Json | null;
+          id: string;
+          is_active: boolean | null;
+          is_popular: boolean | null;
+          min_credits: number | null;
+          name: string;
+          package_type: string;
+          price_mxn: number | null;
+          price_per_credit: number | null;
+          slug: string;
+          sort_order: number | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          created_at?: string | null;
+          credits_amount?: number | null;
+          description?: string | null;
+          features?: Json | null;
+          id?: string;
+          is_active?: boolean | null;
+          is_popular?: boolean | null;
+          min_credits?: number | null;
+          name: string;
+          package_type: string;
+          price_mxn?: number | null;
+          price_per_credit?: number | null;
+          slug: string;
+          sort_order?: number | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          created_at?: string | null;
+          credits_amount?: number | null;
+          description?: string | null;
+          features?: Json | null;
+          id?: string;
+          is_active?: boolean | null;
+          is_popular?: boolean | null;
+          min_credits?: number | null;
+          name?: string;
+          package_type?: string;
+          price_mxn?: number | null;
+          price_per_credit?: number | null;
+          slug?: string;
+          sort_order?: number | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      credit_purchases: {
+        Row: {
+          applied_at: string | null;
+          created_at: string | null;
+          credits_amount: number;
+          id: string;
+          notes: string | null;
+          package_id: string | null;
+          package_name: string;
+          payment_id: string | null;
+          payment_method: string | null;
+          payment_status: string | null;
+          preference_id: string | null;
+          price_paid_mxn: number;
+          updated_at: string | null;
+          user_id: string;
+        };
+        Insert: {
+          applied_at?: string | null;
+          created_at?: string | null;
+          credits_amount: number;
+          id?: string;
+          notes?: string | null;
+          package_id?: string | null;
+          package_name: string;
+          payment_id?: string | null;
+          payment_method?: string | null;
+          payment_status?: string | null;
+          preference_id?: string | null;
+          price_paid_mxn: number;
+          updated_at?: string | null;
+          user_id: string;
+        };
+        Update: {
+          applied_at?: string | null;
+          created_at?: string | null;
+          credits_amount?: number;
+          id?: string;
+          notes?: string | null;
+          package_id?: string | null;
+          package_name?: string;
+          payment_id?: string | null;
+          payment_method?: string | null;
+          payment_status?: string | null;
+          preference_id?: string | null;
+          price_paid_mxn?: number;
+          updated_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "credit_purchases_package_id_fkey";
+            columns: ["package_id"];
+            isOneToOne: false;
+            referencedRelation: "credit_packages";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "credit_purchases_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "user_profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      credit_transactions: {
+        Row: {
+          amount: number;
+          balance_after: number;
+          created_at: string | null;
+          description: string;
+          id: string;
+          purchase_id: string | null;
+          transaction_type: string;
+          user_id: string;
+          video_id: string | null;
+        };
+        Insert: {
+          amount: number;
+          balance_after: number;
+          created_at?: string | null;
+          description: string;
+          id?: string;
+          purchase_id?: string | null;
+          transaction_type: string;
+          user_id: string;
+          video_id?: string | null;
+        };
+        Update: {
+          amount?: number;
+          balance_after?: number;
+          created_at?: string | null;
+          description?: string;
+          id?: string;
+          purchase_id?: string | null;
+          transaction_type?: string;
+          user_id?: string;
+          video_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "credit_transactions_purchase_id_fkey";
+            columns: ["purchase_id"];
+            isOneToOne: false;
+            referencedRelation: "credit_purchases";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "credit_transactions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "user_profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "credit_transactions_video_id_fkey";
+            columns: ["video_id"];
+            isOneToOne: false;
+            referencedRelation: "video_generations";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      mercadopago_webhook_logs: {
+        Row: {
+          created_at: string | null;
+          error_message: string | null;
+          event_type: string | null;
+          id: string;
+          is_valid: boolean | null;
+          payload: Json | null;
+          payment_id: string | null;
+          processed: boolean | null;
+          signature: string | null;
+        };
+        Insert: {
+          created_at?: string | null;
+          error_message?: string | null;
+          event_type?: string | null;
+          id?: string;
+          is_valid?: boolean | null;
+          payload?: Json | null;
+          payment_id?: string | null;
+          processed?: boolean | null;
+          signature?: string | null;
+        };
+        Update: {
+          created_at?: string | null;
+          error_message?: string | null;
+          event_type?: string | null;
+          id?: string;
+          is_valid?: boolean | null;
+          payload?: Json | null;
+          payment_id?: string | null;
+          processed?: boolean | null;
+          signature?: string | null;
+        };
+        Relationships: [];
+      };
+      user_profiles: {
+        Row: {
+          avatar_url: string | null;
+          created_at: string | null;
+          credits_balance: number;
+          daily_generation_limit: number | null;
+          daily_generations_used: number | null;
+          daily_reset_date: string | null;
+          email: string;
+          full_name: string | null;
+          id: string;
+          last_login_at: string | null;
+          phone: string | null;
+          total_credits_purchased: number;
+          total_videos_generated: number;
+          updated_at: string | null;
+        };
+        Insert: {
+          avatar_url?: string | null;
+          created_at?: string | null;
+          credits_balance?: number;
+          daily_generation_limit?: number | null;
+          daily_generations_used?: number | null;
+          daily_reset_date?: string | null;
+          email: string;
+          full_name?: string | null;
+          id: string;
+          last_login_at?: string | null;
+          phone?: string | null;
+          total_credits_purchased?: number;
+          total_videos_generated?: number;
+          updated_at?: string | null;
+        };
+        Update: {
+          avatar_url?: string | null;
+          created_at?: string | null;
+          credits_balance?: number;
+          daily_generation_limit?: number | null;
+          daily_generations_used?: number | null;
+          daily_reset_date?: string | null;
+          email?: string;
+          full_name?: string | null;
+          id?: string;
+          last_login_at?: string | null;
+          phone?: string | null;
+          total_credits_purchased?: number;
+          total_videos_generated?: number;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      video_generations: {
+        Row: {
+          aspect_ratio: string | null;
+          bgm: boolean | null;
+          completed_at: string | null;
+          cover_url: string | null;
+          created_at: string | null;
+          credits_used: number | null;
+          duration: number | null;
+          error_code: string | null;
+          error_message: string | null;
+          id: string;
+          max_retries: number | null;
+          model: string | null;
+          prompt: string;
+          resolution: string | null;
+          retry_count: number | null;
+          started_at: string | null;
+          status: string | null;
+          translated_prompt_en: string | null;
+          user_id: string;
+          video_duration_actual: number | null;
+          video_fps: number | null;
+          video_url: string | null;
+          vidu_creation_id: string | null;
+          vidu_full_response: Json | null;
+          vidu_task_id: string | null;
+        };
+        Insert: {
+          aspect_ratio?: string | null;
+          bgm?: boolean | null;
+          completed_at?: string | null;
+          cover_url?: string | null;
+          created_at?: string | null;
+          credits_used?: number | null;
+          duration?: number | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          id?: string;
+          max_retries?: number | null;
+          model?: string | null;
+          prompt: string;
+          resolution?: string | null;
+          retry_count?: number | null;
+          started_at?: string | null;
+          status?: string | null;
+          translated_prompt_en?: string | null;
+          user_id: string;
+          video_duration_actual?: number | null;
+          video_fps?: number | null;
+          video_url?: string | null;
+          vidu_creation_id?: string | null;
+          vidu_full_response?: Json | null;
+          vidu_task_id?: string | null;
+        };
+        Update: {
+          aspect_ratio?: string | null;
+          bgm?: boolean | null;
+          completed_at?: string | null;
+          cover_url?: string | null;
+          created_at?: string | null;
+          credits_used?: number | null;
+          duration?: number | null;
+          error_code?: string | null;
+          error_message?: string | null;
+          id?: string;
+          max_retries?: number | null;
+          model?: string | null;
+          prompt?: string;
+          resolution?: string | null;
+          retry_count?: number | null;
+          started_at?: string | null;
+          status?: string | null;
+          translated_prompt_en?: string | null;
+          user_id?: string;
+          video_duration_actual?: number | null;
+          video_fps?: number | null;
+          video_url?: string | null;
+          vidu_creation_id?: string | null;
+          vidu_full_response?: Json | null;
+          vidu_task_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "video_generations_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "user_profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      vidu_webhook_logs: {
+        Row: {
+          error_message: string | null;
+          id: string;
+          payload: Json;
+          processed: boolean | null;
+          received_at: string | null;
+          vidu_task_id: string | null;
+        };
+        Insert: {
+          error_message?: string | null;
+          id?: string;
+          payload: Json;
+          processed?: boolean | null;
+          received_at?: string | null;
+          vidu_task_id?: string | null;
+        };
+        Update: {
+          error_message?: string | null;
+          id?: string;
+          payload?: Json;
+          processed?: boolean | null;
+          received_at?: string | null;
+          vidu_task_id?: string | null;
+        };
+        Relationships: [];
+      };
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      apply_credit_purchase: { Args: { p_purchase_id: string }; Returns: Json };
+      calculate_custom_package_price: {
+        Args: { p_credits_amount: number; p_package_id: string };
+        Returns: number;
+      };
+      consume_credit_for_video: {
+        Args: { p_user_id: string; p_video_id: string };
+        Returns: Json;
+      };
+      is_user_authenticated: { Args: never; Returns: boolean };
+      log_credit_transaction: {
+        Args: {
+          p_amount: number;
+          p_description?: string;
+          p_purchase_id?: string;
+          p_transaction_type: string;
+          p_user_id: string;
+          p_video_id?: string;
+        };
+        Returns: number;
+      };
+      refund_credit_for_failed_video: {
+        Args: { p_video_id: string };
+        Returns: undefined;
+      };
+      refund_credits_for_video: { Args: { p_video_id: string }; Returns: Json };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
+  };
+};
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<
+  keyof Database,
+  "public"
+>];
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
 }
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R;
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+      DefaultSchema["Views"])
+  ? (DefaultSchema["Tables"] &
+      DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+      Row: infer R;
+    }
+    ? R
+    : never
+  : never;
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I;
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+      Insert: infer I;
+    }
+    ? I
+    : never
+  : never;
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U;
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+      Update: infer U;
+    }
+    ? U
+    : never
+  : never;
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+  : never;
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+  ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  : never;
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const;

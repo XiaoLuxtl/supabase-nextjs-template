@@ -130,7 +130,9 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
                     );
                   })()}
                   <span className="ml-4 text-zinc-400">
-                    {new Date(selectedVideo.created_at).toLocaleDateString()}
+                    {new Date(
+                      selectedVideo.created_at ?? new Date()
+                    ).toLocaleDateString()}
                   </span>
                 </>
               )}

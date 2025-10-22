@@ -4,7 +4,11 @@ import { useRouter } from "next/navigation";
 import { Check, Plus, Minus, Loader2 } from "lucide-react";
 import { usePackages } from "@/hooks/usePackages";
 import { useCredits } from "@/hooks/useCredits";
-import type { CreditPackage } from "@/types/database.types";
+import type { Database, Json } from "@/types/database.types";
+
+// Usar el tipo exacto de Supabase
+type CreditPackage = Database["public"]["Tables"]["credit_packages"]["Row"];
+
 import {
   Card,
   CardHeader,
@@ -26,6 +30,17 @@ interface DynamicCreditCardProps {
   currentUser: User | null;
   isGlobalLoading: boolean;
   isAuthenticated: boolean; // ✅ Nuevo prop
+}
+
+function getFeaturesArray(features: Json): string[] {
+  if (!features) return [];
+  if (
+    Array.isArray(features) &&
+    features.every((item) => typeof item === "string")
+  ) {
+    return features;
+  }
+  return [];
 }
 
 const DynamicCreditCard = ({
@@ -130,14 +145,12 @@ const DynamicCreditCard = ({
         </div>
 
         <ul className="space-y-3 mb-8">
-          {pkg.features &&
-            Array.isArray(pkg.features) &&
-            pkg.features.map((feature, i) => (
-              <li key={i} className="flex items-center gap-2">
-                <Check className="h-5 w-5 text-green-500" />
-                <span className="text-gray-600">{feature}</span>
-              </li>
-            ))}
+          {getFeaturesArray(pkg.features).map((feature, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <Check className="h-5 w-5 text-green-500" />
+              <span className="text-gray-600">{feature}</span>
+            </li>
+          ))}
         </ul>
 
         <button
@@ -342,14 +355,12 @@ const HomePricing = () => {
                     </div>
 
                     <ul className="space-y-3 mb-8 flex-grow">
-                      {pkg.features &&
-                        Array.isArray(pkg.features) &&
-                        pkg.features.map((feature) => (
-                          <li key={feature} className="flex items-center gap-2">
-                            <Check className="h-5 w-5 text-green-500" />
-                            <span className="text-gray-600">{feature}</span>
-                          </li>
-                        ))}
+                      {getFeaturesArray(pkg.features).map((feature) => (
+                        <li key={feature} className="flex items-center gap-2">
+                          <Check className="h-5 w-5 text-green-500" />
+                          <span className="text-gray-600">{feature}</span>
+                        </li>
+                      ))}
                     </ul>
 
                     <div

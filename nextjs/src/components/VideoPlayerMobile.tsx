@@ -1,7 +1,9 @@
 // src/components/VideoPlayerMobile.tsx
 
 import React from "react";
-import { VideoGeneration } from "@/types/database.types";
+import type { Database } from "@/types/database.types";
+
+type VideoGeneration = Database["public"]["Tables"]["video_generations"]["Row"];
 
 interface VideoPlayerMobileProps {
   selectedVideo: VideoGeneration | null;

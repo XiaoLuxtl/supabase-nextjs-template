@@ -1,8 +1,11 @@
 // src/hooks/useVideos.ts - FUENTE ÚNICA DE VERDAD PARA VIDEOS
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createSPAClient } from "@/lib/supabase/client";
-import { VideoGeneration } from "@/types/database.types";
+import type { Database } from "@/types/database.types";
 import { useGlobal } from "@/lib/context/GlobalContext";
+
+// El tipo exacto de la tabla video_generations
+type VideoGeneration = Database["public"]["Tables"]["video_generations"]["Row"];
 
 // Tipo para el payload de Supabase
 interface RealtimePayload {
