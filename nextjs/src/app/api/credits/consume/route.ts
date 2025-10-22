@@ -78,8 +78,8 @@ async function validateVideoOwnershipAndState(
   video: {
     id: string;
     user_id: string;
-    status: string;
-    credits_used: number;
+    status: string | null; // 👈 Permitir null
+    credits_used: number | null; // 👈 Permitir null
   } | null;
 }> {
   // Verificar que el usuario solo pueda consumir sus propios créditos

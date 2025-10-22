@@ -31,3 +31,11 @@ Thumbs.db
 # Otros archivos de test que quizás también quieras ignorar
 # **/*.test.ts
 # **/*.spec.ts
+
+
+# .eslintignore - asegúrate de tener estas líneas
+tests/
+*.test.ts
+*.spec.ts
+*.security.test.ts
+**/__tests__/**
