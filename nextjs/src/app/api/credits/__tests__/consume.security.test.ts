@@ -44,7 +44,10 @@ describe("Security Tests - Credits Consumption", () => {
       // Act & Assert
       // En un test de integración real, esto se probaría con una request HTTP
       // Aquí verificamos que la función de autenticación se llama correctamente
-      const authResult = await authenticateUser({} as any);
+      const mockRequest = { headers: new Map() } as unknown as Parameters<
+        typeof authenticateUser
+      >[0];
+      const authResult = await authenticateUser(mockRequest);
 
       expect(authResult.success).toBe(false);
       expect(authResult.error).toBe("User not authenticated");
@@ -56,7 +59,10 @@ describe("Security Tests - Credits Consumption", () => {
       mockAuthenticateUser.mockRejectedValue(new Error("Auth service down"));
 
       // Act & Assert
-      await expect(authenticateUser({} as any)).rejects.toThrow(
+      const mockRequest = { headers: new Map() } as unknown as Parameters<
+        typeof authenticateUser
+      >[0];
+      await expect(authenticateUser(mockRequest)).rejects.toThrow(
         "Auth service down"
       );
     });
@@ -202,17 +208,22 @@ describe("Security Tests - Credits Consumption", () => {
       // Arrange
       const errorWithSensitiveData =
         'Database error: user password is "secret123" for user_id=123';
+      const sanitizedError = "Database connection failed";
 
       // Act
       mockLogger.error("Sanitized error message", {
-        error: "Database connection failed",
+        error: sanitizedError,
       });
 
       // Assert
       expect(mockLogger.error).toHaveBeenCalledWith("Sanitized error message", {
-        error: "Database connection failed",
+        error: sanitizedError,
       });
       // El mensaje original con datos sensibles no debería loguearse
+      expect(mockLogger.error).not.toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ error: errorWithSensitiveData })
+      );
     });
   });
 

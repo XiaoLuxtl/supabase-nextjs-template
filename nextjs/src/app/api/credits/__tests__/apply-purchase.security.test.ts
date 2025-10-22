@@ -43,7 +43,10 @@ describe("Security Tests - Apply Purchase Credits", () => {
       });
 
       // Act & Assert
-      const authResult = await authenticateUser({} as any);
+      const mockRequest = { headers: new Map() } as unknown as Parameters<
+        typeof authenticateUser
+      >[0];
+      const authResult = await authenticateUser(mockRequest);
 
       expect(authResult.success).toBe(false);
       expect(authResult.error).toBe("User not authenticated");
@@ -55,7 +58,10 @@ describe("Security Tests - Apply Purchase Credits", () => {
       mockAuthenticateUser.mockRejectedValue(new Error("Auth service down"));
 
       // Act & Assert
-      await expect(authenticateUser({} as any)).rejects.toThrow(
+      const mockRequest = { headers: new Map() } as unknown as Parameters<
+        typeof authenticateUser
+      >[0];
+      await expect(authenticateUser(mockRequest)).rejects.toThrow(
         "Auth service down"
       );
     });
@@ -121,9 +127,9 @@ describe("Security Tests - Apply Purchase Credits", () => {
 
       expect(uuidRegex.test(validUUID)).toBe(true);
 
-      invalidUUIDs.forEach((invalidUUID) => {
+      for (const invalidUUID of invalidUUIDs) {
         expect(uuidRegex.test(invalidUUID)).toBe(false);
-      });
+      }
     });
 
     test("should reject null and undefined inputs", () => {
@@ -259,6 +265,10 @@ describe("Security Tests - Apply Purchase Credits", () => {
         { error: sanitizedError }
       );
       // El dbError original no debería loguearse directamente
+      expect(mockLogger.error).not.toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ error: dbError })
+      );
     });
   });
 
