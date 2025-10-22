@@ -3,6 +3,7 @@
 // It uses the service key which should never be exposed to the client
 
 import { createClient } from "@supabase/supabase-js";
+import { logger } from "./utils/logger";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,7 +22,7 @@ export class CreditsService {
       .single();
 
     if (error) {
-      console.error("Error getting credits balance:", error);
+      logger.error("Error getting credits balance", { userId, error });
       return 0;
     }
 
@@ -43,14 +44,22 @@ export class CreditsService {
       });
 
       if (error) {
-        console.error("Error consuming credits:", error);
+        logger.error("Error consuming credits for video", {
+          userId,
+          videoId,
+          error,
+        });
         return { success: false, newBalance: await this.getBalance(userId) };
       }
 
       const newBalance = await this.getBalance(userId);
       return { success: true, newBalance };
     } catch (error) {
-      console.error("Error in consumeCreditsForVideo:", error);
+      logger.error("Unexpected error in consumeCreditsForVideo", {
+        userId,
+        videoId,
+        error,
+      });
       return { success: false, newBalance: await this.getBalance(userId) };
     }
   }
@@ -67,7 +76,7 @@ export class CreditsService {
       });
 
       if (error) {
-        console.error("Error applying purchase credits:", error);
+        logger.error("Error applying purchase credits", { purchaseId, error });
         return { success: false, newBalance: 0 };
       }
 
@@ -81,7 +90,10 @@ export class CreditsService {
       const newBalance = await this.getBalance(purchase?.user_id || "");
       return { success: true, newBalance };
     } catch (error) {
-      console.error("Error in applyPurchaseCredits:", error);
+      logger.error("Unexpected error in applyPurchaseCredits", {
+        purchaseId,
+        error,
+      });
       return { success: false, newBalance: 0 };
     }
   }
@@ -99,7 +111,7 @@ export class CreditsService {
       });
 
       if (error) {
-        console.error("Error refunding video credits:", error);
+        logger.error("Error refunding video credits", { videoId, error });
         return { success: false, newBalance: 0 };
       }
 
@@ -113,7 +125,10 @@ export class CreditsService {
       const newBalance = await this.getBalance(video?.user_id || "");
       return { success: true, newBalance };
     } catch (error) {
-      console.error("Error in refundVideoCredits:", error);
+      logger.error("Unexpected error in refundVideoCredits", {
+        videoId,
+        error,
+      });
       return { success: false, newBalance: 0 };
     }
   }
@@ -154,7 +169,12 @@ export class CreditsService {
         toBalance: await this.getBalance(toUserId),
       };
     } catch (error) {
-      console.error("Error in transferCredits:", error);
+      logger.error("Unexpected error in transferCredits", {
+        fromUserId,
+        toUserId,
+        amount,
+        error,
+      });
       return {
         success: false,
         fromBalance: await this.getBalance(fromUserId),

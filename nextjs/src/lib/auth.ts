@@ -20,6 +20,7 @@ export interface AuthResult {
  * @returns AuthResult con el usuario autenticado o error
  */
 export async function authenticateUser(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   request: NextRequest
 ): Promise<AuthResult> {
   try {
@@ -52,7 +53,7 @@ export async function authenticateUser(
         email: user.email || "",
       },
     };
-  } catch (error) {
+  } catch {
     return {
       success: false,
       error: "Internal authentication error",

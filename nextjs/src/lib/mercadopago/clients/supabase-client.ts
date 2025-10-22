@@ -99,9 +99,7 @@ export class SupabaseClient {
     }
   }
 
-  static async applyPurchaseCredits(
-    purchaseId: string
-  ): Promise<{
+  static async applyPurchaseCredits(purchaseId: string): Promise<{
     data: ApplyCreditResult | null;
     error: PostgrestError | Error | null;
   }> {
@@ -146,6 +144,42 @@ export class SupabaseClient {
     } catch (error) {
       console.error("❌ Unexpected error in findPurchaseById:", error);
       return null;
+    }
+  }
+
+  /**
+   * Encuentra compras pendientes de un usuario específico
+   */
+  static async findPendingPurchasesByUser(
+    userId: string,
+    limit: number = 10
+  ): Promise<CreditPurchase[]> {
+    try {
+      const supabase = await this.getClient();
+
+      const { data: purchases, error } = await supabase
+        .from("credit_purchases")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("payment_status", "pending")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        console.error(
+          `❌ Error finding pending purchases for user ${userId}:`,
+          error
+        );
+        return [];
+      }
+
+      return purchases || [];
+    } catch (error) {
+      console.error(
+        "❌ Unexpected error in findPendingPurchasesByUser:",
+        error
+      );
+      return [];
     }
   }
 

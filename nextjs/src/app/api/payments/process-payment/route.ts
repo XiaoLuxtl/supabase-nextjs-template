@@ -41,7 +41,9 @@ const supabase = createClient(
 async function validatePaymentRequest(
   request: NextRequest,
   body: ProcessPaymentRequest
-) {
+): Promise<
+  NextResponse | { authenticatedUserId: string; isWebhookCall: boolean }
+> {
   const { payment_id, external_reference, user_id } = body;
 
   // Check if this is a webhook call (no user auth) or user-initiated call
@@ -63,10 +65,10 @@ async function validatePaymentRequest(
           request.headers.get("x-real-ip") ||
           "unknown",
       });
-      return {
-        error: "Forbidden: Cannot process payments for other users",
-        status: 403,
-      };
+      return NextResponse.json(
+        { error: "Forbidden: Cannot process payments for other users" },
+        { status: 403 }
+      );
     }
 
     // Get purchase to validate ownership
@@ -81,7 +83,10 @@ async function validatePaymentRequest(
         purchaseId: external_reference,
         userId: authenticatedUserId,
       });
-      return { error: "Purchase not found", status: 404 };
+      return NextResponse.json(
+        { error: "Purchase not found" },
+        { status: 404 }
+      );
     }
 
     if (!validateResourceOwnership(authenticatedUserId, purchase.user_id)) {
@@ -98,10 +103,10 @@ async function validatePaymentRequest(
             "unknown",
         }
       );
-      return {
-        error: "Forbidden: This payment does not belong to you",
-        status: 403,
-      };
+      return NextResponse.json(
+        { error: "Forbidden: This payment does not belong to you" },
+        { status: 403 }
+      );
     }
 
     return { authenticatedUserId, isWebhookCall: false };
@@ -124,7 +129,7 @@ async function validatePaymentRequest(
         request.headers.get("x-real-ip") ||
         "unknown",
     });
-    return { error: "Purchase not found", status: 404 };
+    return NextResponse.json({ error: "Purchase not found" }, { status: 404 });
   }
 
   logger.info("Processing webhook payment", {
@@ -137,7 +142,7 @@ async function validatePaymentRequest(
       "unknown",
   });
 
-  return { purchaseUserId: purchase.user_id, isWebhookCall: true };
+  return { authenticatedUserId: purchase.user_id, isWebhookCall: true };
 }
 
 // Main processing logic
@@ -149,11 +154,8 @@ async function processPaymentLogic(
 
   // 🔐 VALIDACIÓN DE AUTENTICACIÓN Y PROPIEDAD
   const validationResult = await validatePaymentRequest(request, body);
-  if (validationResult.error) {
-    return NextResponse.json(
-      { error: validationResult.error },
-      { status: validationResult.status }
-    );
+  if (validationResult instanceof NextResponse) {
+    return validationResult;
   }
 
   // 1️⃣ Verificar que la compra existe
@@ -245,7 +247,7 @@ async function processPaymentLogic(
   }
 
   // 7️⃣ Aplicar créditos si fue aprobado
-  return await applyCreditsIfApproved(
+  return applyCreditsIfApproved(
     external_reference,
     payment_id,
     newStatus,
@@ -314,14 +316,14 @@ async function applyCreditsIfApproved(
   newStatus: string,
   purchase: CreditPurchase,
   usedFallback: boolean
-) {
+): Promise<NextResponse> {
   if (newStatus !== "approved") {
     logger.info("Payment not approved, skipping credit application", {
       purchaseId: external_reference,
       paymentId: payment_id,
       status: newStatus,
     });
-    return {
+    return NextResponse.json({
       success: true,
       status: newStatus,
       credits_applied: false,
@@ -329,7 +331,7 @@ async function applyCreditsIfApproved(
         newStatus === "pending"
           ? "El pago está pendiente"
           : "El pago no fue aprobado",
-    };
+    });
   }
 
   logger.info("Applying credits for approved payment", {
@@ -382,13 +384,13 @@ async function applyCreditsIfApproved(
     .eq("id", purchase.user_id)
     .single();
 
-  return {
+  return NextResponse.json({
     success: true,
     status: newStatus,
     credits_applied: true,
     new_balance: profile?.credits_balance || 0,
     used_fallback: usedFallback,
-  };
+  });
 }
 
 export async function POST(request: NextRequest) {
