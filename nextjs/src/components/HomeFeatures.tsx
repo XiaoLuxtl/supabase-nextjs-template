@@ -13,8 +13,21 @@ const features = [
   {
     icon: Image,
     title: "Restauración Fotográfica Avanzada",
-    description:
-      "Mejora la calidad de tus fotos antiguas, corrige el color y elimina el ruido con nuestros servicios.",
+    description: (
+      <>
+        Mejora la calidad de tus fotos antiguas, corrige el color y elimina el
+        ruido con{" "}
+        <a
+          href="https://pixelpages.com.mx/restauracion/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-emerald-400 hover:text-emerald-300 underline"
+        >
+          nuestros servicios
+        </a>
+        .
+      </>
+    ),
     color: "text-emerald-400",
   },
   {
