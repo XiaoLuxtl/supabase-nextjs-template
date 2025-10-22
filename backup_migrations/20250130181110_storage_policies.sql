@@ -19,7 +19,7 @@ on "storage"."objects"
 as permissive
 for insert
 to public
-with check (((bucket_id = 'files'::text) AND auth.is_user_authenticated() AND (name ~ (('^'::text || (auth.uid())::text) || '/'::text)))));
+with check (((bucket_id = 'files'::text) AND auth.is_user_authenticated() AND (name ~ (('^'::text || (auth.uid())::text) || '/.*'::text)))));
 
 
 create policy "Give users access to own folder 1m0cqf_3"

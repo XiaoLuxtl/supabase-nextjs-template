@@ -141,8 +141,6 @@ export async function POST(request: NextRequest) {
       user_id,
       prompt: userPrompt,
       translated_prompt_en: refinedPrompt,
-      input_image_url: "",
-      input_image_path: null,
       model: "viduq1",
       duration: 5,
       aspect_ratio: "16:9",

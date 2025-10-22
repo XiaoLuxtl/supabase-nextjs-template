@@ -79,9 +79,10 @@ const VideoList = function VideoList({
                   : "border-zinc-600 hover:border-emerald-500/50"
               } min-w-[200px] max-w-[200px]`}
             >
-              {video.cover_url || video.input_image_url ? (
+              {/* TODO Temp url */}
+              {video.cover_url || "null" ? (
                 <img
-                  src={video.cover_url || video.input_image_url}
+                  src={video.cover_url || "null"}
                   alt="Video cover"
                   className="w-full h-24 object-cover rounded-md mb-2 pointer-events-none"
                   draggable={false}

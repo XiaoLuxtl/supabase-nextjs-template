@@ -24,7 +24,7 @@ export interface CreditPackage {
   id: string;
   name: string;
   slug: string;
-  package_type: 'fixed' | 'custom';
+  package_type: "fixed" | "custom";
   credits_amount: number | null; // null si es custom
   price_mxn: number | null; // null si es custom
   min_credits: number | null; // solo para custom
@@ -48,7 +48,12 @@ export interface CreditPurchase {
   payment_method: string;
   payment_id: string | null;
   preference_id: string | null;
-  payment_status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'refunded';
+  payment_status:
+    | "pending"
+    | "approved"
+    | "rejected"
+    | "cancelled"
+    | "refunded";
   notes: string | null;
   applied_at: string | null;
   created_at: string;
@@ -59,15 +64,19 @@ export interface VideoGeneration {
   user_id: string;
   prompt: string;
   translated_prompt_en: string;
-  input_image_url: string;
-  input_image_path: string | null;
   model: string;
   duration: number;
   aspect_ratio: string;
   resolution: string;
   vidu_task_id: string | null;
   vidu_creation_id: string | null;
-  status: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
+  status:
+    | "pending"
+    | "queued"
+    | "processing"
+    | "completed"
+    | "failed"
+    | "cancelled";
   credits_used: number;
   video_url: string | null;
   cover_url: string | null;
@@ -90,7 +99,12 @@ export interface CreditTransaction {
   user_id: string;
   amount: number;
   balance_after: number;
-  transaction_type: 'purchase' | 'video_generation' | 'refund' | 'admin_adjustment' | 'bonus';
+  transaction_type:
+    | "purchase"
+    | "video_generation"
+    | "refund"
+    | "admin_adjustment"
+    | "bonus";
   purchase_id: string | null;
   video_id: string | null;
   description: string;
@@ -111,8 +125,8 @@ export interface ViduWebhookLog {
 // ============================================
 
 export interface ViduSuccessResponse {
-  state: 'success';
-  err_code: '';
+  state: "success";
+  err_code: "";
   creations: Array<{
     id: string;
     url: string;
@@ -134,7 +148,7 @@ export interface ViduSuccessResponse {
 }
 
 export interface ViduErrorResponse {
-  state: 'error';
+  state: "error";
   err_code: string;
   err_msg: string;
 }
