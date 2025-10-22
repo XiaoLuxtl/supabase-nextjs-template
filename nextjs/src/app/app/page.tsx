@@ -1,12 +1,11 @@
 // src/app/app/page.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import useDragScroll from "@/hooks/useDragScroll";
-import { useVideoGenerationData } from "@/hooks/useVideoGenerationData";
+import { useVideos } from "@/hooks/useVideos";
 import { useImageUpload } from "@/hooks/useImageUpload";
 import { useVideoGeneration } from "@/hooks/useVideoGeneration";
-import { VideoGeneration } from "@/types/database.types";
 import VideoList from "@/components/VideoList";
 import VideoGeneratorForm from "@/components/VideoGeneratorForm";
 import { VideoPlayerMain } from "@/components/VideoPlayerMain";
@@ -15,22 +14,20 @@ import { ArrowDownToLine, Loader2 } from "lucide-react";
 import { useCredits } from "@/hooks/useCredits";
 import { useGlobal } from "@/lib/context/GlobalContext";
 
-export default function VideoGeneratorUI() {
+const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
   const { user } = useCredits();
   const { loading: authLoading, initialized } = useGlobal();
-  const [selectedVideo, setSelectedVideo] = useState<VideoGeneration | null>(
-    null
-  );
   const [prompt, setPrompt] = useState("");
 
   const sliderRef = useDragScroll();
 
   const {
     videos,
-    setVideos,
+    selectedVideo,
     loading: videosLoading,
     refreshVideos,
-  } = useVideoGenerationData(selectedVideo, setSelectedVideo);
+    selectVideo,
+  } = useVideos();
 
   // Loading combinado: autenticación + datos de videos
   const loading = authLoading || (initialized && videosLoading);
@@ -53,14 +50,15 @@ export default function VideoGeneratorUI() {
     selectedFile,
     preview,
     prompt,
-    setVideos,
-    setSelectedVideo,
     resetImage,
     setPrompt,
     refreshVideos,
   });
 
-  const currentError = generationError || uploadError;
+  const currentError = useMemo(
+    () => generationError || uploadError,
+    [generationError, uploadError]
+  );
 
   const handleDownload = () => {
     if (selectedVideo?.video_url) {
@@ -155,13 +153,17 @@ export default function VideoGeneratorUI() {
           )}
           <VideoPlayerMain selectedVideo={selectedVideo} />
           <VideoList
+            sliderRef={sliderRef}
             videos={videos}
             selectedVideo={selectedVideo}
-            onSelectVideo={setSelectedVideo}
-            sliderRef={sliderRef}
+            onSelectVideo={selectVideo}
           />
         </div>
       </div>
     </div>
   );
-}
+});
+
+VideoGeneratorUI.displayName = "VideoGeneratorUI";
+
+export default VideoGeneratorUI;

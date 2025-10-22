@@ -43,7 +43,7 @@ export default function Home() {
       <Navbar />
 
       <div className="pt-16">
-        {/* ======================= HERO SECTION (Todo incluido en HomeHero) ======================= */}
+        {/* ======================= HERO SECTION ======================= */}
         <HomeHero />
 
         {/* ======================= STATS SECTION ======================= */}

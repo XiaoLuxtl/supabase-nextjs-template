@@ -5,17 +5,17 @@ import { VideoGeneration } from "@/types/database.types";
 import styles from "@/styles/video-list.module.css";
 
 interface VideoListProps {
+  sliderRef: React.RefObject<HTMLDivElement | null>;
   videos: VideoGeneration[];
   selectedVideo: VideoGeneration | null;
-  onSelectVideo: (video: VideoGeneration) => void;
-  sliderRef: React.RefObject<HTMLDivElement | null>;
+  onSelectVideo: (video: VideoGeneration | null) => void;
 }
 
-export default function VideoList({
+const VideoList = function VideoList({
+  sliderRef,
   videos,
   selectedVideo,
   onSelectVideo,
-  sliderRef,
 }: VideoListProps) {
   const statusMap = {
     pending: {
@@ -61,20 +61,20 @@ export default function VideoList({
         </p>
       ) : (
         videos.map((video) => {
-          const statusInfo =
-            statusMap[video.status as keyof typeof statusMap] ||
-            statusMap.failed;
+          const statusInfo = statusMap[video.status] || statusMap.failed;
+          const isSelected = selectedVideo?.id === video.id;
 
           return (
-            <div
+            <button
               key={video.id}
               onClick={() => {
                 onSelectVideo(video);
               }}
+              type="button"
               className={`${
                 styles.videoItem
               } cursor-pointer p-4 border rounded-lg transition-all ${
-                selectedVideo?.id === video.id
+                isSelected
                   ? "border-emerald-500 bg-zinc-800"
                   : "border-zinc-600 hover:border-emerald-500/50"
               } min-w-[200px] max-w-[200px]`}
@@ -92,7 +92,7 @@ export default function VideoList({
                 </div>
               )}
               <div className="flex items-center gap-2 mb-2">
-                {statusInfo.icon && statusInfo.icon}
+                {statusInfo.icon}
                 <span
                   className={`px-2 py-1 rounded-full text-xs font-semibold ${statusInfo.classes} pointer-events-none`}
                   title={`Estado: ${statusInfo.text}`}
@@ -117,10 +117,12 @@ export default function VideoList({
               <p className="text-zinc-500 text-xs mt-1 pointer-events-none">
                 {new Date(video.created_at).toLocaleDateString()}
               </p>
-            </div>
+            </button>
           );
         })
       )}
     </div>
   );
-}
+};
+
+export default VideoList;

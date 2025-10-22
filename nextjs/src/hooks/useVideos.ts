@@ -1,4 +1,4 @@
-// src/hooks/useVideoGenerationData.ts
+// src/hooks/useVideos.ts - FUENTE ÚNICA DE VERDAD PARA VIDEOS
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createSPAClient } from "@/lib/supabase/client";
 import { VideoGeneration } from "@/types/database.types";
@@ -13,12 +13,12 @@ interface RealtimePayload {
   table: string;
 }
 
-export function useVideoGenerationData(
-  selectedVideo: VideoGeneration | null,
-  setSelectedVideo: React.Dispatch<React.SetStateAction<VideoGeneration | null>>
-) {
+export function useVideos() {
   const { user, loading: globalLoading } = useGlobal();
   const [videos, setVideos] = useState<VideoGeneration[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<VideoGeneration | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const supabase = useMemo(() => createSPAClient(), []);
 
@@ -84,7 +84,7 @@ export function useVideoGenerationData(
     }
 
     initializeUserData();
-  }, [user, globalLoading, supabase]);
+  }, [user, globalLoading]);
 
   const loadInitialVideos = async (userId: string) => {
     const { data: videosData, error } = await supabase
@@ -100,6 +100,7 @@ export function useVideoGenerationData(
         "completed",
         "cancelled",
       ])
+      .neq("status", "failed") // Excluir videos fallidos
       .order("created_at", { ascending: false })
       .limit(20);
 
@@ -113,9 +114,12 @@ export function useVideoGenerationData(
       setVideos(typedVideos);
 
       // Solo establecer selectedVideo si no hay uno seleccionado
-      if (!selectedVideo && typedVideos.length > 0) {
-        setSelectedVideo(typedVideos[0]);
-      }
+      setSelectedVideo((current) => {
+        if (!current && typedVideos.length > 0) {
+          return typedVideos[0];
+        }
+        return current;
+      });
     }
   };
 
@@ -192,18 +196,29 @@ export function useVideoGenerationData(
           });
 
           // ✅ Solo seleccionar si no hay video seleccionado
-          setSelectedVideo((current) => current ?? newVideo);
+          setSelectedVideo(
+            (current: VideoGeneration | null) => current ?? newVideo
+          );
           break;
         }
 
         case "UPDATE": {
           let updatedVideo = payload.new as VideoGeneration;
 
-          // Para estados completados o fallidos, obtener datos completos
-          if (
-            updatedVideo.status === "completed" ||
-            updatedVideo.status === "failed"
-          ) {
+          // Si el video falló, removerlo de la lista
+          if (updatedVideo.status === "failed") {
+            console.log(`Removing failed video ${updatedVideo.id} from list`);
+            setVideos((prev) => prev.filter((v) => v.id !== updatedVideo.id));
+
+            // Si era el video seleccionado, deseleccionarlo
+            setSelectedVideo((current: VideoGeneration | null) =>
+              current?.id === updatedVideo.id ? null : current
+            );
+            break;
+          }
+
+          // Para estados completados, obtener datos completos
+          if (updatedVideo.status === "completed") {
             const { data: fullVideo, error } = await supabase
               .from("video_generations")
               .select("*")
@@ -228,7 +243,7 @@ export function useVideoGenerationData(
           );
 
           // Actualizar selectedVideo si es el mismo
-          setSelectedVideo((current) =>
+          setSelectedVideo((current: VideoGeneration | null) =>
             current?.id === updatedVideo.id
               ? { ...current, ...updatedVideo }
               : current
@@ -245,7 +260,7 @@ export function useVideoGenerationData(
 
           setVideos((prev) => prev.filter((v) => v.id !== deletedId));
 
-          setSelectedVideo((current) =>
+          setSelectedVideo((current: VideoGeneration | null) =>
             current?.id === deletedId ? null : current
           );
           break;
@@ -263,5 +278,32 @@ export function useVideoGenerationData(
     }
   }, [user?.id]);
 
-  return { videos, setVideos, loading, supabase, refreshVideos };
+  const selectVideo = useCallback((video: VideoGeneration | null) => {
+    setSelectedVideo(video);
+  }, []);
+
+  const updateVideoInList = useCallback((updatedVideo: VideoGeneration) => {
+    setVideos((current) =>
+      current.map((video) =>
+        video.id === updatedVideo.id ? updatedVideo : video
+      )
+    );
+    // También actualizar selectedVideo si es el mismo
+    setSelectedVideo((current) =>
+      current?.id === updatedVideo.id ? updatedVideo : current
+    );
+  }, []);
+
+  return {
+    // Estado
+    videos,
+    selectedVideo,
+    loading,
+
+    // Acciones
+    selectVideo,
+    refreshVideos,
+    updateVideoInList,
+    setVideos, // Para compatibilidad temporal
+  };
 }

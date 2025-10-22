@@ -56,7 +56,7 @@ const ImageUpload: React.FC<ImageUploadProps> = React.memo(
                 Función deshabilitada
               </p>
               <p className="text-amber-200 text-sm mt-1">
-                Obtén créditos para habilitar o espea a que termine el proceso.
+                Obtén créditos para habilitar o espera a que termine el proceso.
               </p>
             </div>
           </div>

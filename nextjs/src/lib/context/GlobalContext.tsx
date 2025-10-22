@@ -23,6 +23,7 @@ interface GlobalContextType {
   initialized: boolean;
   user: User | null;
   refreshUserProfile: () => Promise<void>;
+  refreshCreditsBalance: () => Promise<void>;
   isAuthenticated: boolean;
   forceLogout: () => Promise<void>;
   sessionHealth: SessionHealth;
@@ -264,6 +265,30 @@ export function GlobalProvider({
       });
     }
   }, [fetchUserProfile, attemptSessionRecovery]);
+
+  const refreshCreditsBalance = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      console.log("🔄 Refreshing credits balance only");
+      const supabase = createSPAClient();
+      const profile = await fetchUserProfile(supabase, user.id);
+
+      if (profile?.credits_balance !== undefined) {
+        setUser((current) =>
+          current
+            ? {
+                ...current,
+                credits_balance: profile.credits_balance,
+              }
+            : null
+        );
+        console.log("✅ Credits balance updated:", profile.credits_balance);
+      }
+    } catch (error) {
+      console.error("Error refreshing credits balance:", error);
+    }
+  }, [user?.id, fetchUserProfile]);
 
   const forceLogout = useCallback(async () => {
     try {
@@ -541,6 +566,7 @@ export function GlobalProvider({
       user,
       isAuthenticated,
       refreshUserProfile,
+      refreshCreditsBalance,
       forceLogout,
       sessionHealth,
     }),
@@ -550,6 +576,7 @@ export function GlobalProvider({
       user,
       isAuthenticated,
       refreshUserProfile,
+      refreshCreditsBalance,
       forceLogout,
       sessionHealth,
     ]

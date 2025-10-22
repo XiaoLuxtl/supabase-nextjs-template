@@ -19,7 +19,7 @@ export interface CreditTransaction {
 export function useCredits() {
   const {
     user,
-    refreshUserProfile,
+    refreshCreditsBalance,
     loading,
     isAuthenticated,
     sessionHealth,
@@ -95,8 +95,8 @@ export function useCredits() {
         console.warn(
           "Session health check failed, attempting refresh before credit consumption"
         );
-        await refreshUserProfile();
-        // Continuar de todas formas - refreshUserProfile maneja los errores
+        await refreshCreditsBalance();
+        // Continuar de todas formas - refreshCreditsBalance maneja los errores
       }
 
       try {
@@ -120,7 +120,7 @@ export function useCredits() {
         return { success: false, newBalance: balance };
       }
     },
-    [user?.id, balance, sessionHealth, refreshUserProfile, fetchWithRetry]
+    [user?.id, balance, sessionHealth, refreshCreditsBalance, fetchWithRetry]
   );
 
   const applyPurchaseCredits = useCallback(
@@ -130,8 +130,8 @@ export function useCredits() {
         console.warn(
           "Session health check failed, attempting refresh before purchase application"
         );
-        await refreshUserProfile();
-        // Continuar de todas formas - refreshUserProfile maneja los errores
+        await refreshCreditsBalance();
+        // Continuar de todas formas - refreshCreditsBalance maneja los errores
       }
 
       try {
@@ -155,7 +155,7 @@ export function useCredits() {
         return { success: false, newBalance: balance };
       }
     },
-    [balance, sessionHealth, refreshUserProfile, fetchWithRetry]
+    [balance, sessionHealth, refreshCreditsBalance, fetchWithRetry]
   );
 
   const refundVideoCredits = useCallback(
@@ -165,8 +165,8 @@ export function useCredits() {
         console.warn(
           "Session health check failed, attempting refresh before refund"
         );
-        await refreshUserProfile();
-        // Continuar de todas formas - refreshUserProfile maneja los errores
+        await refreshCreditsBalance();
+        // Continuar de todas formas - refreshCreditsBalance maneja los errores
       }
 
       try {
@@ -190,7 +190,7 @@ export function useCredits() {
         return { success: false, newBalance: balance };
       }
     },
-    [balance, sessionHealth, refreshUserProfile, fetchWithRetry]
+    [balance, sessionHealth, refreshCreditsBalance, fetchWithRetry]
   );
 
   return {

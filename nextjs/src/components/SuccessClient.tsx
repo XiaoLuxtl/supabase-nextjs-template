@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useGlobal } from "@/lib/context/GlobalContext";
+import { useCredits } from "@/hooks/useCredits";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -24,6 +25,7 @@ export const SuccessClient: React.FC = () => {
   const router = useRouter();
   const [processing, setProcessing] = useState(true);
   const { user, refreshUserProfile, isAuthenticated } = useGlobal();
+  const { balance } = useCredits();
   const [error, setError] = useState<string | null>(null);
   const [hasProcessed, setHasProcessed] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -205,9 +207,7 @@ export const SuccessClient: React.FC = () => {
             <span className="text-zinc-400">Tus créditos disponibles:</span>
             <Sparkles className="w-5 h-5 text-pink-500" />
           </div>
-          <div className="text-4xl font-bold text-emerald-500">
-            {user?.credits_balance ?? 0}
-          </div>
+          <div className="text-4xl font-bold text-emerald-500">{balance}</div>
         </div>
 
         {/* Info Card */}

@@ -1,13 +1,16 @@
 // src/hooks/useVideoGeneration.ts
 import { useState, useCallback } from "react";
-import { VideoGeneration } from "@/types/database.types";
 import { User, useGlobal } from "@/lib/context/GlobalContext";
 import { processImageForVidu } from "@/lib/image-processor";
+import { logger } from "@/lib/utils/logger";
+
+// Timeout para la generación de video (3 minutos - Vidu puede tardar hasta 2 minutos)
+const GENERATION_TIMEOUT = 180000;
 
 // Función para convertir errores técnicos en mensajes user-friendly
 const getUserFriendlyErrorMessage = (errorMessage: string): string => {
   if (errorMessage.includes("Vidu API error")) {
-    return "Error al procesar el video. Los créditos han sido reembolsados. Por favor, intenta nuevamente o contacta soporte si el problema persiste.";
+    return "Error en el servicio de generación de video. Los créditos han sido reembolsados. Por favor, intenta nuevamente en unos minutos.";
   }
   if (errorMessage.includes("Contenido no permitido")) {
     return "La imagen contiene contenido no permitido. Por favor, usa una imagen diferente.";
@@ -31,13 +34,9 @@ interface UseVideoGenerationProps {
   selectedFile: File | null;
   preview: string | null;
   prompt: string;
-  setVideos: React.Dispatch<React.SetStateAction<VideoGeneration[]>>;
-  setSelectedVideo: React.Dispatch<
-    React.SetStateAction<VideoGeneration | null>
-  >;
   resetImage: () => void;
   setPrompt: React.Dispatch<React.SetStateAction<string>>;
-  refreshVideos: () => Promise<void>;
+  refreshVideos?: () => Promise<void>; // Para refrescar lista de videos en errores inmediatos
 }
 
 export function useVideoGeneration({
@@ -50,7 +49,7 @@ export function useVideoGeneration({
 }: UseVideoGenerationProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { refreshUserProfile } = useGlobal();
+  const { refreshCreditsBalance } = useGlobal();
 
   const generateVideo = useCallback(async () => {
     setIsGenerating(true);
@@ -76,6 +75,12 @@ export function useVideoGeneration({
     try {
       const processed = await processImageForVidu(selectedFile);
 
+      // Crear AbortController para timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, GENERATION_TIMEOUT);
+
       const response = await fetch("/api/vidu/generate", {
         method: "POST",
         headers: {
@@ -86,15 +91,40 @@ export function useVideoGeneration({
           prompt: prompt.trim(),
           user_id: user.id,
         }),
+        signal: controller.signal,
       });
 
-      const data = await response.json();
+      clearTimeout(timeoutId);
+
+      logger.info("API response received", {
+        status: response.status,
+        ok: response.ok,
+      });
+
+      let data;
+      try {
+        const responseText = await response.text();
+        logger.debug("API raw response", { responseText });
+        data = JSON.parse(responseText);
+        logger.debug("API parsed data", { data });
+      } catch (parseError) {
+        logger.error("Failed to parse API response", parseError);
+        throw new Error("Respuesta inválida del servidor");
+      }
 
       if (!response.ok || (data && !data.success)) {
+        logger.warn("API returned error", {
+          status: response.status,
+          data,
+        });
         const errorMessage =
           data?.error || "Error desconocido al generar video";
-        // Refrescar lista de videos para asegurar que no se muestre video fallido
-        await refreshVideos();
+        // Refrescar balance de créditos (créditos reembolsados)
+        await refreshCreditsBalance();
+        // Refrescar lista de videos inmediatamente para mostrar estado fallido
+        if (refreshVideos) {
+          await refreshVideos();
+        }
         // Mostrar mensaje de error mejorado
         const userFriendlyMessage = getUserFriendlyErrorMessage(errorMessage);
         setError(userFriendlyMessage);
@@ -109,19 +139,28 @@ export function useVideoGeneration({
         resetImage();
         setPrompt("");
         localStorage.setItem("lastSubmission", Date.now().toString());
-        console.log("✅ Video generation completed, credits updated");
+        logger.info("Video generation completed, credits updated");
       } else {
-        console.log("⚠️ Video generation failed but credits were consumed");
+        logger.warn("Video generation failed but credits were consumed");
       }
     } catch (err: unknown) {
-      console.error("Generate error:", err);
+      logger.error("Generate error occurred", err);
 
-      // Refrescar lista de videos para asegurar que no se muestre video fallido
-      await refreshVideos();
+      // Refrescar balance de créditos en caso de error (créditos reembolsados)
+      await refreshCreditsBalance();
+      // Refrescar lista de videos inmediatamente para mostrar estado fallido
+      if (refreshVideos) {
+        await refreshVideos();
+      }
 
       let errorMessage = "Error desconocido al generar video";
       if (err instanceof Error) {
-        errorMessage = err.message;
+        if (err.name === "AbortError") {
+          errorMessage =
+            "La generación tomó demasiado tiempo. Por favor, intenta nuevamente.";
+        } else {
+          errorMessage = err.message;
+        }
       } else if (typeof err === "string") {
         errorMessage = err;
       }
@@ -132,7 +171,15 @@ export function useVideoGeneration({
     } finally {
       setIsGenerating(false);
     }
-  }, [selectedFile, prompt, user, resetImage, setPrompt, refreshUserProfile]);
+  }, [
+    selectedFile,
+    prompt,
+    user,
+    resetImage,
+    setPrompt,
+    refreshCreditsBalance,
+    refreshVideos,
+  ]);
 
   return {
     isGenerating,
