@@ -31,7 +31,7 @@ const getUserFriendlyErrorMessage = (
   }
 
   // Default message mejorado
-  return `Error al generar el video: ${errorMessage}.`;
+  return `${errorMessage}.`;
 };
 
 interface UseVideoGenerationProps {

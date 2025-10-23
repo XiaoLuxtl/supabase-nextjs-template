@@ -211,7 +211,10 @@ export async function POST(request: NextRequest) {
         })
         .eq("id", generation.id);
       return NextResponse.json(
-        { error: "Error en consumo de créditos (failsafe activado)" },
+        {
+          error:
+            "Error en generación de video o consumo de créditos (failsafe activado, no se descontó crédito)",
+        },
         { status: 500 }
       );
     }
