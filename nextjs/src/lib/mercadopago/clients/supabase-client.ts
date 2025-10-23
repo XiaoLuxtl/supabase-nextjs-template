@@ -106,13 +106,14 @@ export class SupabaseClient {
     try {
       const supabase = await this.getClient();
 
-      const result = await supabase.rpc("apply_credit_purchase", {
+      const result = await supabase.rpc("apply_credit_purchase_secure", {
         p_purchase_id: purchaseId,
       });
 
-      return result as {
-        data: ApplyCreditResult | null;
-        error: PostgrestError | null;
+      // La nueva función retorna un objeto JSONB directamente
+      return {
+        data: result.data as ApplyCreditResult | null,
+        error: result.error,
       };
     } catch (error) {
       console.error("❌ Error in applyPurchaseCredits:", error);

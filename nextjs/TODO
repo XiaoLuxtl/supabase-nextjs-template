@@ -1,9 +1,19 @@
-Eliminar todas las isntancias de 
-input_image_path
+Cambios en DB
 
-y de
-input_image_url
+Comprar créditos
+Gastarlos
+Refund OK
 
-is_user_authenticated
+# Busca en VS Code:
+- "apply_credit_purchase" ok
+- "process-payment" ok
+- "webhook"
+- "MercadoPago"
 
-Revisar Imagenes de respaldo
+
+cambiar:
+apply_credit_purchase_secure
+consume_credit_for_video_secure
+log_credit_transaction_secure
+
+npx supabase gen types typescript --project-id "dknomqgzmnlakpskeety" > src/types/database.types.ts

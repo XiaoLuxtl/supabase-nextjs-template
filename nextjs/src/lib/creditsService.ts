@@ -69,32 +69,56 @@ export class CreditsService {
    */
   static async applyPurchaseCredits(
     purchaseId: string
-  ): Promise<{ success: boolean; newBalance: number }> {
+  ): Promise<{ success: boolean; newBalance: number; errorCode?: string }> {
     try {
-      const { error } = await supabase.rpc("apply_credit_purchase", {
-        p_purchase_id: purchaseId,
-      });
+      const { data: applyResult, error } = await supabase.rpc(
+        "apply_credit_purchase_secure",
+        {
+          p_purchase_id: purchaseId,
+        }
+      );
 
       if (error) {
-        logger.error("Error applying purchase credits", { purchaseId, error });
-        return { success: false, newBalance: 0 };
+        logger.error("Error applying purchase credits via enhanced RPC", {
+          purchaseId,
+          error,
+        });
+        return {
+          success: false,
+          newBalance: 0,
+          errorCode: "RPC_ERROR",
+        };
       }
 
-      // Obtener el user_id de la compra para devolver el balance actualizado
-      const { data: purchase } = await supabase
-        .from("credit_purchases")
-        .select("user_id")
-        .eq("id", purchaseId)
-        .single();
+      // Manejar la nueva estructura de respuesta
+      if (!applyResult.success) {
+        logger.error("Purchase credit application failed", {
+          purchaseId,
+          error: applyResult.error,
+          errorCode: applyResult.error_code,
+        });
 
-      const newBalance = await this.getBalance(purchase?.user_id || "");
-      return { success: true, newBalance };
+        return {
+          success: false,
+          newBalance: 0,
+          errorCode: applyResult.error_code,
+        };
+      }
+
+      return {
+        success: true,
+        newBalance: applyResult.new_balance || 0,
+      };
     } catch (error) {
       logger.error("Unexpected error in applyPurchaseCredits", {
         purchaseId,
         error,
       });
-      return { success: false, newBalance: 0 };
+      return {
+        success: false,
+        newBalance: 0,
+        errorCode: "UNEXPECTED_ERROR",
+      };
     }
   }
 

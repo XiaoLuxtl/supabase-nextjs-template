@@ -252,7 +252,8 @@ async function processPaymentLogic(
     payment_id,
     newStatus,
     purchase,
-    usedFallback
+    usedFallback,
+    validationResult.isWebhookCall // ← Pasar este valor
   );
 }
 
@@ -315,7 +316,8 @@ async function applyCreditsIfApproved(
   payment_id: string,
   newStatus: string,
   purchase: CreditPurchase,
-  usedFallback: boolean
+  usedFallback: boolean,
+  isWebhookCall: boolean // ← Este parámetro debe estar
 ): Promise<NextResponse> {
   if (newStatus !== "approved") {
     logger.info("Payment not approved, skipping credit application", {
@@ -334,19 +336,33 @@ async function applyCreditsIfApproved(
     });
   }
 
-  logger.info("Applying credits for approved payment", {
+  logger.info("Purchase details before RPC call", {
+    purchaseId: external_reference,
+    userId: purchase.user_id,
+    paymentStatus: purchase.payment_status,
+    appliedAt: purchase.applied_at,
+    creditsAmount: purchase.credits_amount,
+  });
+
+  logger.info("Applying credits for approved payment via enhanced RPC", {
     purchaseId: external_reference,
     paymentId: payment_id,
     userId: purchase.user_id,
   });
 
   const { data: applyResult, error: applyError } = await supabase.rpc(
-    "apply_credit_purchase",
+    "apply_credit_purchase_webhook", // ← CORRECTO
     { p_purchase_id: external_reference }
   );
 
+  // Y después del RPC call, agrega:
+  logger.info("Raw RPC response", {
+    applyResult: applyResult,
+    applyError: applyError,
+  });
+
   if (applyError) {
-    logger.error("Error applying credits via RPC", {
+    logger.error("Error applying credits via enhanced RPC", {
       purchaseId: external_reference,
       paymentId: payment_id,
       error: applyError,
@@ -354,41 +370,47 @@ async function applyCreditsIfApproved(
     throw new Error(`Failed to apply credits: ${applyError.message}`);
   }
 
+  // Manejar la nueva estructura de respuesta
   if (applyResult && !applyResult.success) {
-    logger.error("Credit application failed", {
+    logger.error("Credit application failed via enhanced RPC", {
       purchaseId: external_reference,
       error: applyResult.error,
+      errorCode: applyResult.error_code,
       alreadyApplied: applyResult.already_applied,
     });
 
-    if (!applyResult.already_applied) {
-      throw new Error(`Credit application failed: ${applyResult.error}`);
+    // Si ya estaba aplicado, no es un error fatal
+    if (applyResult.already_applied) {
+      logger.info("Credits were already applied, continuing", {
+        purchaseId: external_reference,
+      });
+
+      return NextResponse.json({
+        success: true,
+        status: newStatus,
+        credits_applied: false,
+        already_applied: true,
+        new_balance: applyResult.new_balance,
+        used_fallback: usedFallback,
+      });
     }
-    // Si ya estaba aplicado, continuar
-    logger.info("Credits were already applied, continuing", {
-      purchaseId: external_reference,
-    });
+
+    throw new Error(`Credit application failed: ${applyResult.error}`);
   }
 
-  logger.info("Credits applied successfully", {
+  logger.info("Credits applied successfully via enhanced RPC", {
     purchaseId: external_reference,
     newBalance: applyResult?.new_balance,
     creditsAdded: applyResult?.credits_added,
     userId: purchase.user_id,
   });
 
-  // Obtener balance actualizado
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("credits_balance")
-    .eq("id", purchase.user_id)
-    .single();
-
   return NextResponse.json({
     success: true,
     status: newStatus,
     credits_applied: true,
-    new_balance: profile?.credits_balance || 0,
+    new_balance: applyResult?.new_balance || 0,
+    credits_added: applyResult?.credits_added || 0,
     used_fallback: usedFallback,
   });
 }
