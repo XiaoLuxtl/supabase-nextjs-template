@@ -11,8 +11,40 @@ const supabase = createClient(
   process.env.PRIVATE_SUPABASE_SERVICE_KEY!
 );
 
+// Define interfaces para el tipo de compra
+interface Purchase {
+  id: string;
+  user_id: string;
+  payment_status: string;
+  applied_at: string | null;
+  credits_amount?: number;
+  package_name?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface ApplyPurchaseRequest {
   purchaseId: string;
+}
+
+interface ValidationResult {
+  success: boolean;
+  error?: string;
+  purchase?: Purchase;
+}
+
+interface StatusValidationResult {
+  success: boolean;
+  error?: string;
+}
+
+interface RpcApplyResult {
+  success: boolean;
+  error?: string;
+  error_code?: string;
+  credits_added?: number;
+  new_balance?: number;
+  already_applied?: boolean;
 }
 
 /**
@@ -21,7 +53,7 @@ interface ApplyPurchaseRequest {
 async function validatePurchaseOwnership(
   purchaseId: string,
   authenticatedUserId: string
-): Promise<{ success: boolean; error?: string; purchase?: any }> {
+): Promise<ValidationResult> {
   // Validar formato UUID
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -73,10 +105,7 @@ async function validatePurchaseOwnership(
 /**
  * Valida el estado de la compra
  */
-function validatePurchaseStatus(purchase: any): {
-  success: boolean;
-  error?: string;
-} {
+function validatePurchaseStatus(purchase: Purchase): StatusValidationResult {
   // Verificar que esté aprobada
   if (purchase.payment_status !== "approved") {
     return {
@@ -96,7 +125,7 @@ function validatePurchaseStatus(purchase: any): {
   return { success: true };
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     // 1. AUTENTICAR USUARIO
     const authResult = await authenticateUser(request);
@@ -132,11 +161,12 @@ export async function POST(request: NextRequest) {
       authenticatedUserId
     );
     if (!ownershipValidation.success) {
+      const statusCode = ownershipValidation.error?.includes("not belong")
+        ? 403
+        : 404;
       return NextResponse.json(
         { error: ownershipValidation.error },
-        {
-          status: ownershipValidation.error?.includes("not belong") ? 403 : 404,
-        }
+        { status: statusCode }
       );
     }
 
@@ -177,9 +207,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 6. MANEJAR RESULTADO DE LA RPC MEJORADA
-    if (!applyResult.success) {
+    const rpcResult = applyResult as RpcApplyResult;
+
+    if (!rpcResult.success) {
       // Manejar casos específicos de error
-      const errorCode = applyResult.error_code;
+      const errorCode = rpcResult.error_code;
 
       if (errorCode === "UNAUTHORIZED_ACCESS") {
         return NextResponse.json(
@@ -205,14 +237,14 @@ export async function POST(request: NextRequest) {
       logger.error("Credit application failed via enhanced RPC", {
         purchaseId,
         userId: authenticatedUserId,
-        error: applyResult.error,
-        errorCode: applyResult.error_code,
+        error: rpcResult.error,
+        errorCode: rpcResult.error_code,
       });
 
       return NextResponse.json(
         {
-          error: applyResult.error || "Failed to apply credits",
-          errorCode: applyResult.error_code,
+          error: rpcResult.error || "Failed to apply credits",
+          errorCode: rpcResult.error_code,
         },
         { status: 400 }
       );
@@ -222,23 +254,26 @@ export async function POST(request: NextRequest) {
     logger.info("Purchase credits applied successfully via enhanced RPC", {
       purchaseId,
       userId: authenticatedUserId,
-      creditsAdded: applyResult.credits_added,
-      newBalance: applyResult.new_balance,
-      alreadyApplied: applyResult.already_applied,
+      creditsAdded: rpcResult.credits_added,
+      newBalance: rpcResult.new_balance,
+      alreadyApplied: rpcResult.already_applied,
     });
 
     return NextResponse.json({
       success: true,
-      creditsAdded: applyResult.credits_added,
-      newBalance: applyResult.new_balance,
+      creditsAdded: rpcResult.credits_added,
+      newBalance: rpcResult.new_balance,
       packageName: purchase.package_name,
       appliedAt: new Date().toISOString(),
-      alreadyApplied: applyResult.already_applied || false,
+      alreadyApplied: rpcResult.already_applied || false,
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
     logger.error("Unexpected error in apply-purchase API", {
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+      error: errorMessage,
+      stack: errorStack,
       ip:
         request.headers.get("x-forwarded-for") ||
         request.headers.get("x-real-ip"),
@@ -252,7 +287,7 @@ export async function POST(request: NextRequest) {
 }
 
 // También puedes agregar GET para verificar el estado de una compra
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const authResult = await authenticateUser(request);
     if (!authResult.success || !authResult.user) {
@@ -297,9 +332,11 @@ export async function GET(request: NextRequest) {
         createdAt: purchase.created_at,
       },
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
     logger.error("Error getting purchase status", {
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
     });
 
     return NextResponse.json(

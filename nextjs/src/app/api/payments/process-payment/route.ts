@@ -324,6 +324,7 @@ async function applyCreditsIfApproved(
       purchaseId: external_reference,
       paymentId: payment_id,
       status: newStatus,
+      isWebhookCall,
     });
     return NextResponse.json({
       success: true,

@@ -188,8 +188,8 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
             <div className="mt-6 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg max-w-md mx-auto">
               <p className="text-blue-300 text-sm text-center">
                 💡 <strong>Sugerencia:</strong> Si los problemas persisten, usa
-                el botón "Refrescar página completa" para reiniciar la
-                aplicación.
+                el botón `&quot;`Refrescar página completa`&quot;` para
+                reiniciar la aplicación.
               </p>
             </div>
           </div>
@@ -288,7 +288,8 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
                   <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-4">
                     <p className="text-emerald-400 text-sm text-center">
                       ✅ ¡Videos cargados correctamente! Si aún ves problemas,
-                      puedes usar el botón "Refrescar página completa" arriba.
+                      puedes usar el botón `&quot;`Refrescar página
+                      completa`&quot;` arriba.
                     </p>
                   </div>
                 </>
