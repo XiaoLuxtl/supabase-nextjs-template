@@ -1,208 +1,273 @@
-// src/lib/creditsService.ts - SERVER ONLY
-// ⚠️  This service should only be used in API routes (server-side)
-// It uses the service key which should never be exposed to the client
-
+// /lib/creditsService.ts - VERSIÓN UNIFICADA Y MEJORADA
 import { createClient } from "@supabase/supabase-js";
-import { logger } from "./utils/logger";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.PRIVATE_SUPABASE_SERVICE_KEY!
 );
 
+interface CreditOperationResult {
+  success: boolean;
+  error?: string;
+  newBalance?: number;
+  transactionId?: number;
+}
+
+interface RpcResponse {
+  success: boolean;
+  error?: string;
+  new_balance?: number;
+  transaction_id?: number;
+}
+
 export class CreditsService {
   /**
-   * Obtiene el balance actual de créditos de un usuario
-   */
-  static async getBalance(userId: string): Promise<number> {
-    const { data, error } = await supabase
-      .from("user_profiles")
-      .select("credits_balance")
-      .eq("id", userId)
-      .single();
-
-    if (error) {
-      logger.error("Error getting credits balance", { userId, error });
-      return 0;
-    }
-
-    return data?.credits_balance ?? 0;
-  }
-
-  /**
-   * Consume créditos de un usuario para generar un video
+   * ✅ CONSUMO SEGURO DE CRÉDITOS - ÚNICA FUENTE DE VERDAD
    */
   static async consumeCreditsForVideo(
     userId: string,
     videoId: string
-  ): Promise<{ success: boolean; newBalance: number }> {
+  ): Promise<CreditOperationResult> {
     try {
-      // Consumir créditos usando la función RPC mejorada
-      const { error } = await supabase.rpc("consume_credit_for_video", {
-        p_user_id: userId,
-        p_video_id: videoId,
-      });
-
-      if (error) {
-        logger.error("Error consuming credits for video", {
-          userId,
-          videoId,
-          error,
-        });
-        return { success: false, newBalance: await this.getBalance(userId) };
+      // 🔒 Validación adicional de seguridad
+      if (!userId || typeof userId !== "string") {
+        return {
+          success: false,
+          error: "User ID inválido",
+        };
       }
 
-      const newBalance = await this.getBalance(userId);
-      return { success: true, newBalance };
-    } catch (error) {
-      logger.error("Unexpected error in consumeCreditsForVideo", {
+      // Validar formato UUID
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(userId)) {
+        return {
+          success: false,
+          error: "Formato de User ID inválido",
+        };
+      }
+
+      if (!videoId || typeof videoId !== "string" || !uuidRegex.test(videoId)) {
+        return {
+          success: false,
+          error: "Video ID inválido",
+        };
+      }
+
+      console.log("🔐 Consumiendo créditos de forma segura:", {
         userId,
         videoId,
-        error,
       });
-      return { success: false, newBalance: await this.getBalance(userId) };
-    }
-  }
 
-  /**
-   * Agrega créditos a un usuario aplicando una compra
-   */
-  static async applyPurchaseCredits(
-    purchaseId: string
-  ): Promise<{ success: boolean; newBalance: number; errorCode?: string }> {
-    try {
-      const { data: applyResult, error } = await supabase.rpc(
-        "apply_credit_purchase_secure",
-        {
-          p_purchase_id: purchaseId,
-        }
+      // Usar el cliente con service key para operaciones directas
+      const adminSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.PRIVATE_SUPABASE_SERVICE_KEY!
       );
 
-      if (error) {
-        logger.error("Error applying purchase credits via enhanced RPC", {
-          purchaseId,
-          error,
-        });
+      // ✅ 1. Verificar que el usuario existe y obtener balance actual (TABLA CORRECTA)
+      const { data: userProfile, error: userError } = await adminSupabase
+        .from("user_profiles") // ← TABLA CORRECTA
+        .select("credits_balance")
+        .eq("id", userId) // ← COLUMNA CORRECTA
+        .single();
+
+      if (userError || !userProfile) {
+        console.error("❌ Error obteniendo balance del usuario:", userError);
         return {
           success: false,
-          newBalance: 0,
-          errorCode: "RPC_ERROR",
+          error: "Usuario no encontrado o error de base de datos",
         };
       }
 
-      // Manejar la nueva estructura de respuesta
-      if (!applyResult.success) {
-        logger.error("Purchase credit application failed", {
-          purchaseId,
-          error: applyResult.error,
-          errorCode: applyResult.error_code,
-        });
+      const currentBalance = userProfile.credits_balance; // ← CAMPO CORRECTO
+      console.log(`💰 Balance actual: ${currentBalance}`);
 
+      // 2. Verificar que tenga suficientes créditos
+      if (currentBalance < 1) {
         return {
           success: false,
-          newBalance: 0,
-          errorCode: applyResult.error_code,
+          error: "Créditos insuficientes",
         };
       }
+
+      // 3. Consumir 1 crédito de forma atómica
+      const newBalance = currentBalance - 1;
+
+      const { error: updateError } = await adminSupabase
+        .from("user_profiles") // ← TABLA CORRECTA
+        .update({
+          credits_balance: newBalance, // ← CAMPO CORRECTO
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", userId); // ← COLUMNA CORRECTA
+
+      if (updateError) {
+        console.error("❌ Error actualizando balance:", updateError);
+        return {
+          success: false,
+          error: `Error actualizando balance: ${updateError.message}`,
+        };
+      }
+
+      // 4. Registrar la transacción
+      const { error: transactionError } = await adminSupabase
+        .from("credit_transactions")
+        .insert({
+          user_id: userId,
+          amount: -1,
+          balance_after: newBalance, // ← IMPORTANTE: agregar este campo
+          transaction_type: "video_generation",
+          description: "Generación de video con Vidu",
+          video_id: videoId,
+          created_at: new Date().toISOString(),
+        });
+
+      if (transactionError) {
+        console.error("❌ Error registrando transacción:", transactionError);
+        // No retornamos error aquí porque el consumo ya se hizo
+      }
+
+      console.log(`✅ Créditos consumidos. Nuevo balance: ${newBalance}`);
 
       return {
         success: true,
-        newBalance: applyResult.new_balance || 0,
+        newBalance,
+        transactionId: undefined,
       };
     } catch (error) {
-      logger.error("Unexpected error in applyPurchaseCredits", {
-        purchaseId,
-        error,
-      });
+      console.error("❌ Error inesperado en consumeCreditsForVideo:", error);
       return {
         success: false,
-        newBalance: 0,
-        errorCode: "UNEXPECTED_ERROR",
+        error: error instanceof Error ? error.message : "Error inesperado",
       };
     }
   }
 
   /**
-   * Reembolsa créditos por un video fallido
+   * ✅ REEMBOLSO SEGURO DE CRÉDITOS
    */
   static async refundVideoCredits(
     videoId: string
-  ): Promise<{ success: boolean; newBalance: number }> {
+  ): Promise<CreditOperationResult> {
     try {
-      // Usar la función RPC existente para reembolsar
-      const { error } = await supabase.rpc("refund_credits_for_video", {
+      console.log("🔄 Procesando reembolso para video:", videoId);
+
+      // Primero obtener información del video para validar
+      const { data: video, error: videoError } = await supabase
+        .from("video_generations")
+        .select("user_id, credits_used, status")
+        .eq("id", videoId)
+        .single();
+
+      if (videoError || !video) {
+        return {
+          success: false,
+          error: "Video no encontrado",
+        };
+      }
+
+      // Solo reembolsar si se usaron créditos
+      if (video.credits_used === 0) {
+        console.log("ℹ️ No hay créditos que reembolsar");
+        return {
+          success: true,
+          newBalance: await this.getBalance(video.user_id),
+        };
+      }
+
+      // Usar RPC segura para reembolso
+      const { error, data } = await supabase.rpc("refund_credits_for_video", {
         p_video_id: videoId,
       });
 
       if (error) {
-        logger.error("Error refunding video credits", { videoId, error });
-        return { success: false, newBalance: 0 };
+        console.error("❌ RPC Error en reembolso:", error);
+        return {
+          success: false,
+          error: `Error en reembolso: ${error.message}`,
+        };
       }
 
-      // Obtener el user_id del video para devolver el balance actualizado
-      const { data: video } = await supabase
-        .from("video_generations")
-        .select("user_id")
-        .eq("id", videoId)
-        .single();
+      const rpcResponse = data as RpcResponse;
 
-      const newBalance = await this.getBalance(video?.user_id || "");
-      return { success: true, newBalance };
+      if (!rpcResponse || !rpcResponse.success) {
+        return {
+          success: false,
+          error: rpcResponse?.error || "Error desconocido en reembolso",
+        };
+      }
+
+      console.log(
+        `✅ Reembolso exitoso. Nuevo balance: ${rpcResponse.new_balance}`
+      );
+
+      return {
+        success: true,
+        newBalance: rpcResponse.new_balance,
+        transactionId: rpcResponse.transaction_id,
+      };
     } catch (error) {
-      logger.error("Unexpected error in refundVideoCredits", {
-        videoId,
-        error,
-      });
-      return { success: false, newBalance: 0 };
+      console.error("❌ Error inesperado en refundVideoCredits:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Error inesperado",
+      };
     }
   }
 
   /**
-   * Verifica si un usuario puede costear una operación
+   * ✅ OBTENER BALANCE ACTUAL
    */
-  static async canAfford(userId: string, cost: number): Promise<boolean> {
-    const balance = await this.getBalance(userId);
-    return balance >= cost;
+  static async getBalance(userId: string): Promise<number> {
+    try {
+      const { data: profile, error } = await supabase
+        .from("user_profiles")
+        .select("credits_balance")
+        .eq("id", userId)
+        .single();
+
+      if (error) {
+        console.error("❌ Error obteniendo balance:", error);
+        return 0;
+      }
+
+      return profile?.credits_balance || 0;
+    } catch (error) {
+      console.error("❌ Error inesperado obteniendo balance:", error);
+      return 0;
+    }
   }
 
   /**
-   * Transfiere créditos entre usuarios (para futuras funcionalidades)
+   * ✅ VALIDAR CRÉDITOS SUFICIENTES
    */
-  static async transferCredits(
-    fromUserId: string,
-    toUserId: string,
-    amount: number
-  ): Promise<{ success: boolean; fromBalance: number; toBalance: number }> {
+  static async validateSufficientCredits(userId: string): Promise<{
+    isValid: boolean;
+    currentBalance: number;
+    error?: string;
+  }> {
     try {
-      // Verificar que el usuario origen tenga suficientes créditos
-      const fromBalance = await this.getBalance(fromUserId);
-      if (fromBalance < amount) {
+      const balance = await this.getBalance(userId);
+
+      if (balance < 1) {
         return {
-          success: false,
-          fromBalance,
-          toBalance: await this.getBalance(toUserId),
+          isValid: false,
+          currentBalance: balance,
+          error: "Créditos insuficientes",
         };
       }
 
-      // Realizar la transferencia (esto requeriría una función RPC específica)
-      // Por ahora, devolver error ya que no está implementado
-      console.warn("Transfer functionality not implemented yet");
       return {
-        success: false,
-        fromBalance,
-        toBalance: await this.getBalance(toUserId),
+        isValid: true,
+        currentBalance: balance,
       };
     } catch (error) {
-      logger.error("Unexpected error in transferCredits", {
-        fromUserId,
-        toUserId,
-        amount,
-        error,
-      });
+      console.error("❌ Error validando créditos:", error);
       return {
-        success: false,
-        fromBalance: await this.getBalance(fromUserId),
-        toBalance: await this.getBalance(toUserId),
+        isValid: false,
+        currentBalance: 0,
+        error: "Error al validar créditos",
       };
     }
   }

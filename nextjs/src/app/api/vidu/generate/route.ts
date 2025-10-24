@@ -1,352 +1,282 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { refineViduPrompt } from "@/lib/prompt-refiner";
-import { describeImage, checkNSFWContent } from "@/lib/ai-vision";
-import { refundAndMarkFailed } from "@/lib/refund-helper";
+import { ValidationService } from "@/lib/vidu/security/validationService";
+import { ImageProcessor } from "@/lib/vidu/processors/imageProcessor";
+import { VideoGenerationProcessor } from "@/lib/vidu/processors/videoGenerationProcessor";
+import { ViduClient } from "@/lib/vidu/clients/viduClient";
+import { ErrorHandler } from "@/lib/vidu/utils/errorHandler";
+import {
+  VideoGenerationRequest,
+  VideoGenerationResult,
+  ViduApiResponse,
+} from "@/lib/vidu/types/viduTypes";
+import { CreditsService } from "@/lib/creditsService";
+import { authenticateUser } from "@/lib/auth";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.PRIVATE_SUPABASE_SERVICE_KEY!
-);
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  let body: VideoGenerationRequest;
 
-export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { image_base64, prompt: userPrompt, user_id } = body;
-
-    console.log("=== VIDU GENERATE REQUEST ===");
-    console.log("User ID:", user_id);
-    console.log("Prompt length:", userPrompt?.length);
-    console.log("Image base64 length:", image_base64?.length);
-
-    if (!userPrompt || !user_id) {
-      console.error("Missing required fields");
+    // 🔒 0. Autenticar usuario
+    const authResult = await authenticateUser(request);
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
-        { error: "prompt y user_id son requeridos" },
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    const authenticatedUserId = authResult.user.id;
+
+    // 1. Intentar parsear el body de forma segura
+    const requestBody = await request.text();
+
+    if (!requestBody || requestBody.trim() === "") {
+      return NextResponse.json(
+        { error: "Request body está vacío" },
         { status: 400 }
       );
     }
 
-    // Verificar créditos
-    console.log("Checking user credits...");
-    const { data: profile, error: profileError } = await supabase
-      .from("user_profiles")
-      .select("credits_balance")
-      .eq("id", user_id)
-      .single();
-
-    if (profileError) {
-      console.error("Profile error:", profileError);
+    try {
+      body = JSON.parse(requestBody) as VideoGenerationRequest;
+    } catch (parseError) {
+      console.error("Error parsing JSON:", parseError);
       return NextResponse.json(
-        { error: "Usuario no encontrado" },
-        { status: 404 }
+        { error: "Formato JSON inválido en el request body" },
+        { status: 400 }
       );
     }
 
-    if (profile.credits_balance < 1) {
+    const { image_base64, prompt: userPrompt } = body;
+
+    console.log("=== VIDU GENERATE REQUEST ===");
+    console.log("User ID:", authenticatedUserId);
+    console.log("Prompt length:", userPrompt?.length);
+    console.log("Image base64 length:", image_base64?.length);
+
+    // 2. Validar request básico
+    console.log("--- STEP 2: Validating request ---");
+    const requestValidation = ValidationService.validateRequest(body);
+    console.log("Request validation result:", requestValidation);
+    if (!requestValidation.isValid) {
+      console.log("❌ Request validation failed:", requestValidation.error);
       return NextResponse.json(
-        { error: "Créditos insuficientes" },
-        { status: 402 }
+        { error: requestValidation.error },
+        { status: 400 }
       );
     }
+    console.log("✅ Request validation passed");
+    console.log("--- STEP 2 ---");
 
-    // Validar NSFW (si hay imagen)
+    // 3. Validar créditos del usuario
+    console.log("--- STEP 3: Validating credits ---");
+    const creditValidation = await ValidationService.validateUserCredits(
+      authenticatedUserId
+    );
+    console.log("Credit validation result:", creditValidation);
+    if (!creditValidation.isValid) {
+      console.log("❌ Credit validation failed:", creditValidation.error);
+      const status =
+        creditValidation.error === "Créditos insuficientes" ? 402 : 404;
+      return NextResponse.json({ error: creditValidation.error }, { status });
+    }
+    console.log(
+      "✅ Credit validation passed, balance:",
+      creditValidation.currentBalance
+    );
+    console.log("--- STEP 3 ---");
+
+    // 4. Procesar imagen (si existe)
+    console.log("--- STEP 4: Processing image ---");
     let imageDescription = "ninguna imagen proporcionada";
     if (image_base64) {
-      console.log("Checking image content...");
-      const nsfwCheck = await checkNSFWContent(image_base64);
-      if (nsfwCheck.isNSFW) {
-        console.log("NSFW content detected:", nsfwCheck.reason);
+      console.log("Processing image, base64 length:", image_base64.length);
+      try {
+        const imageResult = await ImageProcessor.processImage(image_base64);
+        console.log("Image processing result:", {
+          hasDescription: !!imageResult.imageDescription,
+          nsfwCheck: imageResult.nsfwCheck,
+        });
+
+        if (imageResult.nsfwCheck?.isNSFW) {
+          console.log(
+            "❌ NSFW content detected:",
+            imageResult.nsfwCheck.reason
+          );
+          return NextResponse.json(
+            {
+              error: `Contenido no permitido: ${
+                imageResult.nsfwCheck.reason || "Imagen inapropiada"
+              }`,
+              code: "NSFW_CONTENT",
+            },
+            { status: 400 }
+          );
+        }
+
+        imageDescription = imageResult.imageDescription;
+        console.log("✅ Image processing completed");
+      } catch (error) {
+        console.log("❌ Image processing error:", error);
         return NextResponse.json(
-          {
-            error: `Contenido no permitido: ${
-              nsfwCheck.reason || "Imagen inapropiada"
-            }`,
-            code: "NSFW_CONTENT",
-          },
+          { error: "Error al procesar la imagen" },
           { status: 400 }
         );
       }
-      console.log("Analyzing image with GPT-4 Vision...");
-      imageDescription = await describeImage(image_base64);
-      console.log("Image Description:", imageDescription);
+    } else {
+      console.log("No image provided, skipping image processing");
     }
+    console.log("--- STEP 4 ---");
 
-    // Refinar prompt
-    console.log("Refining prompt with GPT-4o...");
-    const refinedPrompt = await refineViduPrompt(userPrompt, imageDescription);
-    console.log("Refined Prompt:", refinedPrompt);
+    // 5. Refinar prompt
+    const refinedPrompt = await ImageProcessor.refinePrompt(
+      userPrompt,
+      imageDescription
+    );
+    console.log("--- STEP 5 ---");
 
-    // Crear registro en Supabase
-    console.log("Creating generation record...");
-    const videoData = {
-      user_id,
-      prompt: userPrompt,
-      translated_prompt_en: refinedPrompt,
-      model: "viduq1",
-      duration: 5,
-      aspect_ratio: "16:9",
-      resolution: "1080p",
-      vidu_task_id: null,
-      vidu_creation_id: null,
-      status: "pending",
-      credits_used: 0,
-      video_url: null,
-      cover_url: null,
-      video_duration_actual: null,
-      video_fps: null,
-      bgm: false,
-      error_message: null,
-      error_code: null,
-      retry_count: 0,
-      max_retries: 3,
-      vidu_full_response: null,
-      created_at: new Date().toISOString(),
-      started_at: null,
-      completed_at: null,
-    };
+    // 6. Crear registro de generación
+    const generationResult =
+      await VideoGenerationProcessor.createGenerationRecord(
+        authenticatedUserId,
+        userPrompt,
+        refinedPrompt
+      );
 
-    const { data: generation, error: genError } = await supabase
-      .from("video_generations")
-      .insert(videoData)
-      .select()
-      .single();
-
-    if (genError) {
-      console.error("Error creating generation:", genError);
+    if (!generationResult.success || !generationResult.generation) {
       return NextResponse.json(
-        { error: "Error al crear generación" },
+        { error: generationResult.error || "Error al crear generación" },
         { status: 500 }
       );
     }
 
-    // ✅ CONSUMIR CRÉDITO PRIMERO - ANTES de llamar a Vidu
-    console.log("Consuming credit...");
-    const { error: consumeError } = await supabase.rpc(
-      "consume_credit_for_video",
-      {
-        p_user_id: user_id,
-        p_video_id: generation.id,
-      }
+    const generation = generationResult.generation;
+
+    console.log("--- STEP 6 ---");
+
+    // 7. ✅ CONSUMIR CRÉDITOS DE FORMA SEGURA
+    const creditResult = await CreditsService.consumeCreditsForVideo(
+      authenticatedUserId,
+      generation.id
     );
 
-    if (consumeError) {
-      console.error("Error consuming credit:", consumeError);
-      // Marcar como failed en lugar de eliminar
-      await supabase
-        .from("video_generations")
-        .update({
-          status: "failed",
-          error_message: `Error al consumir crédito: ${consumeError.message}`,
-          credits_used: 0, // No se consumieron créditos
-        })
-        .eq("id", generation.id);
+    if (!creditResult.success) {
+      await VideoGenerationProcessor.markAsFailed(
+        generation.id,
+        `Error al consumir créditos: ${creditResult.error}`
+      );
       return NextResponse.json(
-        { error: "Error al consumir crédito" },
+        { error: creditResult.error || "Error al consumir créditos" },
         { status: 500 }
       );
     }
 
-    // ✅ MARCAR CRÉDITO COMO CONSUMIDO EN EL VIDEO
-    console.log("Marking credit as consumed on video record...");
-    const { error: markConsumedError } = await supabase
-      .from("video_generations")
-      .update({ credits_used: 1 })
-      .eq("id", generation.id);
+    console.log(`✅ Créditos consumidos: ${creditResult.newBalance} restantes`);
+    console.log("--- STEP 7 ---");
 
-    if (markConsumedError) {
-      console.error("Error marking credit as consumed:", markConsumedError);
-      // Revertir: Reembolsar crédito y marcar como failed
-      await supabase.rpc("refund_credits_for_video", {
-        p_video_id: generation.id,
-      });
-      await supabase
-        .from("video_generations")
-        .update({
-          status: "failed",
-          error_message: `Error al marcar crédito como consumido: ${markConsumedError.message}`,
-          credits_used: 0, // Reembolsado
-        })
-        .eq("id", generation.id);
-      return NextResponse.json(
-        { error: "Error al marcar crédito como consumido" },
-        { status: 500 }
-      );
-    }
+    // 8. Verificar que los créditos se consumieron correctamente
+    const updatedBalance = await CreditsService.getBalance(authenticatedUserId);
+    const initialBalance = creditValidation.currentBalance;
 
-    console.log("✅ Credit marked as consumed on video record");
-
-    // ✅ OBTENER CRÉDITOS ACTUALIZADOS INMEDIATAMENTE
-    console.log("Getting updated credits...");
-    const { data: updatedProfile, error: creditsError } = await supabase
-      .from("user_profiles")
-      .select("credits_balance")
-      .eq("id", user_id)
-      .single();
-
-    if (creditsError) {
-      console.error("Error getting updated credits:", creditsError);
-    }
-
-    const updatedCredits =
-      updatedProfile?.credits_balance ?? profile.credits_balance - 1;
-    console.log(`💰 Créditos actualizados: ${updatedCredits}`);
-
-    // ✅ FAILSAFE: Verificar que los créditos bajaron correctamente
-    const initialCredits = profile.credits_balance;
-    if (updatedCredits >= initialCredits) {
+    if (updatedBalance >= initialBalance) {
       console.error(
-        `❌ FAILSAFE: Créditos no bajaron! Inicial: ${initialCredits}, Actual: ${updatedCredits}`
+        `❌ FAILSAFE: Créditos no bajaron! Inicial: ${initialBalance}, Actual: ${updatedBalance}`
       );
-      // Reembolsar inmediatamente y marcar como failed
-      await supabase.rpc("refund_credits_for_video", {
-        p_video_id: generation.id,
-      });
-      await supabase
-        .from("video_generations")
-        .update({
-          status: "failed",
-          error_message: `Failsafe activado: créditos no bajaron (inicial: ${initialCredits}, actual: ${updatedCredits})`,
-          credits_used: 0, // Reembolsado
-        })
-        .eq("id", generation.id);
+
+      await CreditsService.refundVideoCredits(generation.id);
+      await VideoGenerationProcessor.markAsFailed(
+        generation.id,
+        `Failsafe activado: créditos no bajaron (inicial: ${initialBalance}, actual: ${updatedBalance})`
+      );
+
       return NextResponse.json(
         {
           error:
-            "Error en generación de video o consumo de créditos (failsafe activado, no se descontó crédito)",
+            "Error en consumo de créditos (failsafe activado, no se descontó crédito)",
         },
         { status: 500 }
       );
     }
 
     console.log(
-      `✅ FAILSAFE: Créditos bajaron correctamente (${initialCredits} → ${updatedCredits})`
+      `✅ Créditos consumidos correctamente (${initialBalance} → ${updatedBalance})`
     );
+    console.log("--- STEP 8 ---");
 
-    // Llamar a Vidu API (DESPUÉS de consumir crédito)
-    console.log("Calling Vidu API...");
-    const viduPayload = {
-      model: "viduq1",
-      images: image_base64 ? [`data:image/jpeg;base64,${image_base64}`] : [],
-      prompt: refinedPrompt,
-      duration: 5,
-      resolution: "1080p",
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/api/vidu/webhook`,
+    // 9. Llamar a Vidu API
+    const viduPayload = ViduClient.createPayload(refinedPrompt, image_base64);
+    const viduResult = await ViduClient.generateVideo(viduPayload);
+
+    if (!viduResult.success || !viduResult.taskId) {
+      // ✅ REEMBOLSAR usando el servicio unificado
+      await CreditsService.refundVideoCredits(generation.id);
+      await VideoGenerationProcessor.markAsFailed(
+        generation.id,
+        viduResult.error || "Error en Vidu API"
+      );
+
+      return NextResponse.json({
+        success: false,
+        error: viduResult.error,
+        updatedCredits: creditResult.newBalance, // Ya reembolsado
+      });
+    }
+    console.log("--- STEP 9 ---");
+
+    // 10. Actualizar generación con datos de Vidu
+    // Crear datos seguros para Vidu
+    const safeViduData = {
+      taskId: viduResult.taskId,
+      creationId: (viduResult.data as ViduApiResponse)?.task_id, // Mapear task_id a creationId si es necesario
+      status: "processing",
+      rawResponse: viduResult.data, // Guardar la respuesta completa
+      timestamp: new Date().toISOString(),
     };
 
-    const viduResponse = await fetch(process.env.VIDU_API_URL!, {
-      method: "POST",
-      headers: {
-        Authorization: `Token ${process.env.VIDU_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(viduPayload),
-    });
+    const updateResult = await VideoGenerationProcessor.updateWithViduData(
+      generation.id,
+      viduResult.taskId,
+      safeViduData // ← Ahora es un objeto válido
+    );
 
-    const responseText = await viduResponse.text();
-    console.log("Vidu response status:", viduResponse.status);
-    console.log("Vidu raw response:", responseText);
-
-    let viduData;
-    let taskId;
-
-    if (!viduResponse.ok) {
-      console.error("Vidu API error:", responseText);
-
-      const refundResult = await refundAndMarkFailed(
-        generation.id,
-        user_id,
-        `Vidu API error: ${responseText}`,
-        updatedCredits
-      );
-
+    if (!updateResult.success) {
+      // Aunque Vidu fue exitoso, si no podemos actualizar la BD, reembolsamos
+      await CreditsService.refundVideoCredits(generation.id);
       return NextResponse.json({
         success: false,
-        error: `Vidu API error: ${responseText}`,
-        updatedCredits: refundResult.newBalance || updatedCredits,
+        error: "Error actualizando generación",
+        updatedCredits: updatedBalance,
       });
     }
+    console.log("--- STEP 10 ---");
 
-    try {
-      viduData = JSON.parse(responseText);
-      console.log("Vidu parsed data:", viduData);
-      taskId = viduData.task_id?.toString();
-    } catch (parseError) {
-      console.error("Failed to parse Vidu response:", parseError);
-
-      const finalCredits = await refundAndMarkFailed(
-        generation.id,
-        user_id,
-        "Invalid Vidu response",
-        updatedCredits
-      );
-
-      return NextResponse.json({
-        success: false,
-        error: "Invalid Vidu response",
-        updatedCredits: finalCredits,
-      });
-    }
-
-    if (!taskId) {
-      console.error("No task_id in Vidu response");
-
-      const finalCredits = await refundAndMarkFailed(
-        generation.id,
-        user_id,
-        "No task_id in response",
-        updatedCredits
-      );
-
-      return NextResponse.json({
-        success: false,
-        error: "No task_id in response",
-        updatedCredits: finalCredits,
-      });
-    }
-
-    // ✅ Actualizar generación con éxito
-    const { data: updatedGeneration, error: updateError } = await supabase
-      .from("video_generations")
-      .update({
-        vidu_task_id: taskId,
-        status: "processing",
-        started_at: new Date().toISOString(),
-        vidu_full_response: viduData,
-        credits_used: 1,
-      })
-      .eq("id", generation.id)
-      .select()
-      .single();
-
-    if (updateError || !updatedGeneration) {
-      console.error("Error updating generation:", updateError);
-      return NextResponse.json({
-        success: false,
-        error: "Error updating generation",
-        updatedCredits: updatedCredits, // 👈 Devolver créditos actualizados incluso en error
-      });
-    }
-
-    // ✅ ÉXITO - Devolver créditos actualizados
-    return NextResponse.json({
+    // 11. ÉXITO
+    const result: VideoGenerationResult = {
       success: true,
-      generation: updatedGeneration,
-      updatedCredits: updatedCredits, // 👈 Créditos actualizados
+      generation: updateResult.generation,
+      updatedCredits: updatedBalance,
       message: "Video en proceso de generación",
-    });
+    };
+
+    return NextResponse.json(result);
   } catch (error) {
-    const err = error as Error;
-    console.error("=== VIDU GENERATE ERROR ===");
-    console.error("Error message:", err.message);
-    console.error("Error stack:", err.stack);
+    ErrorHandler.logError("VIDU GENERATE", error);
+    const errorInfo = ErrorHandler.handleError(error);
 
     return NextResponse.json(
-      {
-        error: "Error interno del servidor",
-        details: err.message,
-      },
+      { error: errorInfo.message, details: errorInfo.details },
       { status: 500 }
     );
   }
+}
+
+// También agreguemos un método GET para debugging
+export async function GET(): Promise<NextResponse> {
+  return NextResponse.json({
+    message: "Generate API está funcionando",
+    usage:
+      "Envía un POST con { prompt: string, image_base64?: string } (autenticación requerida)",
+    required_fields: ["prompt"],
+    optional_fields: ["image_base64"],
+  });
 }

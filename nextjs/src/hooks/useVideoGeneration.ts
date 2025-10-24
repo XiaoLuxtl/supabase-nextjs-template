@@ -7,6 +7,77 @@ import { logger } from "@/lib/utils/logger";
 // Timeout para la generación de video (3 minutos)
 const GENERATION_TIMEOUT = 180000;
 
+// Función para validar inputs
+const validateInputs = (
+  selectedFile: File | null,
+  prompt: string,
+  user: User | null
+): string | null => {
+  if (!selectedFile) {
+    return "Por favor selecciona una imagen primero.";
+  }
+  if (!prompt.trim()) {
+    return "Por favor escribe una descripción.";
+  }
+  if (!user) {
+    return "Usuario no autenticado.";
+  }
+  return null;
+};
+
+// Función para procesar respuesta de la API
+const processApiResponse = async (
+  response: Response,
+  refreshCreditsBalance: () => Promise<void>,
+  refreshVideos?: () => Promise<void>
+): Promise<void> => {
+  const responseText = await response.text();
+  const data = responseText ? JSON.parse(responseText) : {};
+
+  logger.info("API response received", {
+    status: response.status,
+    ok: response.ok,
+  });
+  logger.debug("API parsed data", { data });
+
+  // Manejar errores
+  if (!response.ok || !data?.success) {
+    await refreshCreditsBalance();
+    if (refreshVideos) await refreshVideos();
+
+    const errorMessage =
+      data?.error || response.statusText || `Error HTTP ${response.status}`;
+    throw new Error(getUserFriendlyErrorMessage(errorMessage, response.status));
+  }
+};
+
+// Función para setup de generación
+const setupGeneration = (
+  timeoutMs: number
+): { controller: AbortController; timeoutId: NodeJS.Timeout } => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    logger.warn("Generation timeout reached, aborting...");
+    controller.abort();
+  }, timeoutMs);
+
+  return { controller, timeoutId };
+};
+
+// Función para hacer la petición HTTP
+const makeGenerationRequest = async (
+  imageBase64: string,
+  prompt: string,
+  controller: AbortController
+): Promise<Response> => {
+  return fetch("/api/vidu/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ image_base64: imageBase64, prompt }),
+    signal: controller.signal,
+  });
+};
+
 // Función mejorada para errores
 const getUserFriendlyErrorMessage = (
   errorMessage: string,
@@ -56,134 +127,55 @@ export function useVideoGeneration({
   const [error, setError] = useState<string | null>(null);
   const { refreshCreditsBalance } = useGlobal();
 
+  // Timeout de seguridad adicional (5 minutos) para forzar limpieza del estado
+  const SAFETY_TIMEOUT = 300000;
+
   const generateVideo = useCallback(async () => {
     setIsGenerating(true);
     setError(null);
 
-    // Validaciones
-    if (!selectedFile) {
-      setError("Por favor selecciona una imagen primero.");
+    const safetyTimeoutId = setTimeout(() => {
+      logger.error("Safety timeout - forcing cleanup");
       setIsGenerating(false);
-      return;
-    }
-    if (!prompt.trim()) {
-      setError("Por favor escribe una descripción.");
-      setIsGenerating(false);
-      return;
-    }
-    if (!user) {
-      setError("Usuario no autenticado.");
-      setIsGenerating(false);
-      return;
-    }
-
-    let controller: AbortController | null = null;
-    let timeoutId: NodeJS.Timeout | null = null;
+      setError("La generación tomó demasiado tiempo. Intenta nuevamente.");
+    }, SAFETY_TIMEOUT);
 
     try {
-      const processed = await processImageForVidu(selectedFile);
+      const validationError = validateInputs(selectedFile, prompt.trim(), user);
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
 
-      // Crear AbortController para timeout
-      controller = new AbortController();
-      timeoutId = setTimeout(() => {
-        logger.warn("Generation timeout reached, aborting...");
-        controller?.abort();
-      }, GENERATION_TIMEOUT);
+      const processed = await processImageForVidu(selectedFile!);
+      const { controller, timeoutId } = setupGeneration(GENERATION_TIMEOUT);
 
-      const response = await fetch("/api/vidu/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          image_base64: processed.base64,
-          prompt: prompt.trim(),
-          user_id: user.id,
-        }),
-        signal: controller.signal,
-      });
-
-      // Limpiar timeout inmediatamente después de la respuesta
-      if (timeoutId) clearTimeout(timeoutId);
-
-      logger.info("API response received", {
-        status: response.status,
-        ok: response.ok,
-        statusText: response.statusText,
-      });
-
-      let data;
       try {
-        const responseText = await response.text();
-        logger.debug("API raw response", { responseText });
-        data = responseText ? JSON.parse(responseText) : {};
-        logger.debug("API parsed data", { data });
-      } catch (parseError) {
-        logger.error("Failed to parse API response", parseError);
-        throw new Error("Respuesta inválida del servidor");
-      }
-
-      // ✅ MEJORADO: Manejar tanto response.ok como data.success
-      if (!response.ok || (data && !data.success)) {
-        logger.warn("API returned error", {
-          status: response.status,
-          data,
-          ok: response.ok,
-        });
-
-        const errorMessage =
-          data?.error || response.statusText || `Error HTTP ${response.status}`;
-
-        // Refrescar balance y videos inmediatamente
-        await refreshCreditsBalance();
-        if (refreshVideos) {
-          await refreshVideos();
-        }
-
-        // Mensaje de error con status code
-        const userFriendlyMessage = getUserFriendlyErrorMessage(
-          errorMessage,
-          response.status
+        const response = await makeGenerationRequest(
+          processed.base64,
+          prompt.trim(),
+          controller
         );
-        setError(userFriendlyMessage);
-        throw new Error(userFriendlyMessage);
-      }
+        clearTimeout(timeoutId);
+        await processApiResponse(
+          response,
+          refreshCreditsBalance,
+          refreshVideos
+        );
 
-      // ✅ ÉXITO: Limpiar formulario
-      if (data.success) {
+        // Success
         resetImage();
         setPrompt("");
         localStorage.setItem("lastSubmission", Date.now().toString());
-        logger.info("Video generation completed successfully");
+        logger.info("Video generation completed");
+      } finally {
+        clearTimeout(timeoutId);
+        controller.abort();
       }
-    } catch (err: unknown) {
-      logger.error("Generate error occurred", err);
-
-      // Refrescar balance y videos en CUALQUIER error
-      await refreshCreditsBalance();
-      if (refreshVideos) {
-        await refreshVideos();
-      }
-
-      let errorMessage = "Error desconocido al generar video";
-
-      if (err instanceof Error) {
-        if (err.name === "AbortError") {
-          errorMessage =
-            "La generación tomó demasiado tiempo y fue cancelada automáticamente.";
-        } else {
-          errorMessage = err.message;
-        }
-      } else if (typeof err === "string") {
-        errorMessage = err;
-      }
-
-      // Convertir a mensaje user-friendly
-      const userFriendlyMessage = getUserFriendlyErrorMessage(errorMessage);
-      setError(userFriendlyMessage);
+    } catch (err) {
+      await handleGenerationError(err, refreshCreditsBalance, refreshVideos);
     } finally {
-      // Limpiar timeout si aún existe
-      if (timeoutId) clearTimeout(timeoutId);
+      clearTimeout(safetyTimeoutId);
       setIsGenerating(false);
     }
   }, [
@@ -195,6 +187,30 @@ export function useVideoGeneration({
     refreshCreditsBalance,
     refreshVideos,
   ]);
+
+  // Función auxiliar para manejar errores
+  const handleGenerationError = async (
+    err: unknown,
+    refreshCreditsBalance: () => Promise<void>,
+    refreshVideos?: () => Promise<void>
+  ) => {
+    logger.error("Generation error", err);
+
+    if (!(err instanceof Error) || !err.message.includes("Error HTTP")) {
+      await refreshCreditsBalance();
+      if (refreshVideos) await refreshVideos();
+    }
+
+    let errorMessage = "Error desconocido";
+    if (err instanceof Error) {
+      errorMessage =
+        err.name === "AbortError"
+          ? "La generación tomó demasiado tiempo y fue cancelada."
+          : err.message;
+    }
+
+    setError(getUserFriendlyErrorMessage(errorMessage));
+  };
 
   return {
     isGenerating,

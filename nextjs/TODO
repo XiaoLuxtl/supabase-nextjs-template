@@ -1,9 +1,3 @@
-Cambios en DB
-
-Comprar créditos
-Gastarlos
-Refund OK
-
 # Busca en VS Code:
 - "apply_credit_purchase" ok
 - "process-payment" ok
@@ -11,9 +5,42 @@ Refund OK
 - "MercadoPago"
 
 
-cambiar:
-apply_credit_purchase_secure
-consume_credit_for_video_secure
-log_credit_transaction_secure
+✅ RESUELTO: Problema de autenticación en consume_credit_for_video_secure
+- Implementado consumo directo de créditos en servidor para evitar problemas RPC
+- Mantiene seguridad con validaciones en código TypeScript
+- Registra transacciones correctamente
 
+✅ MEJORADO: UX de manejo de errores en generación de video
+- Agregado timeout de seguridad de 5 minutos para forzar limpieza de estado
+- Refactorizado código para reducir complejidad cognitiva
+- Mejorado manejo de errores con funciones auxiliares
+- Asegurado que el estado "Generando..." siempre se limpie
+
+# Comando para recordar como actualizar DB Types
 npx supabase gen types typescript --project-id "dknomqgzmnlakpskeety" > src/types/database.types.ts
+
+# Ideas de publicidad
+"Nunca hacer publicidad fue tan facil" frase
+Mujer con fondo y cara, ropa casual
+
+Poner la cara censurada
+Añadir esta caracteristica
+
+
+Revisar este error
+
+D:\Projects\supabase…deoGeneration.ts:93 
+ POST https://tool-entertainment-birds-presently.trycloudflare.com/api/vidu/generate 500 (Internal Server Error)
+D:\Projects\supabase…\utils\logger.ts:27 ℹ️ API response received 
+{status: 500, ok: false, statusText: ''}
+D:\Projects\supabase…\utils\logger.ts:18 🐛 API raw response 
+{responseText: '{"error":"Not authenticated"}'}
+D:\Projects\supabase…\utils\logger.ts:18 🐛 API parsed data 
+{data: {…}}
+D:\Projects\supabase…\utils\logger.ts:41 ⚠️ API returned error 
+{status: 500, data: {…}, ok: false}
+D:\Projects\supabase…obalContext.tsx:273 🔄 Refreshing credits balance only
+D:\Projects\supabase…ks\useVideos.ts:150 Received Supabase event: UPDATE c986b21a-7539-4695-94fc-8732431d3db3
+D:\Projects\supabase…ks\useVideos.ts:213 Removing failed video c986b21a-7539-4695-94fc-8732431d3db3 from list
+hot-reloader-client.js:241 [Fast Refresh] rebuilding
+
