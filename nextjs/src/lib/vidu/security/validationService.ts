@@ -1,4 +1,4 @@
-// /lib/vidu/security/validationService.ts - ACTUALIZADO
+// /lib/vidu/security/validationService.ts - CORREGIDO
 import { CreditsService } from "@/lib/creditsService";
 import { CreditValidationResult, NSFWCheckResult } from "../types/viduTypes";
 import { checkNSFWContent } from "@/lib/ai-vision";
@@ -16,18 +16,28 @@ function isValidString(value: unknown): value is string {
 
 export class ValidationService {
   /**
-   * ✅ USAR CREDITSSERVICE EN LUGAR DE CONSULTAS DIRECTAS
+   * ✅ VALIDACIÓN SIMPLIFICADA DE CRÉDITOS
+   * Usa getBalance directamente en lugar de método que no existe
    */
   static async validateUserCredits(
     userId: string
   ): Promise<CreditValidationResult> {
-    const result = await CreditsService.validateSufficientCredits(userId);
+    try {
+      const balance = await CreditsService.getBalance(userId);
 
-    return {
-      isValid: result.isValid,
-      currentBalance: result.currentBalance,
-      error: result.error,
-    };
+      return {
+        isValid: balance >= 1,
+        currentBalance: balance,
+        error: balance < 1 ? "Créditos insuficientes" : undefined,
+      };
+    } catch (error) {
+      console.error("Error validating user credits:", error);
+      return {
+        isValid: false,
+        currentBalance: 0,
+        error: "Error al validar créditos",
+      };
+    }
   }
 
   static async validateImageContent(

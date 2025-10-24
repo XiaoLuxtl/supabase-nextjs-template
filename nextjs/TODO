@@ -38,14 +38,23 @@ Añadir esta caracteristica
 
 
 Revisar este error
-
-
-
-
 🔐 Consumiendo créditos usando RPC segura: {
   userId: '8f929b80-ab86-4705-8171-b0d60f02547f',
   videoId: 'f47a593c-d71c-4963-a1b2-6f8e96f65d11'
 }
 
+Verificar proceso de pago paquetes otra vez...
 
 # Agent Ignore end
+
+/lib/vidu/processors/imageProcessor.ts - ¿Necesita actualizarse para el flujo asíncrono?
+
+/lib/vidu/security/validationService.ts - ¿Se eliminan validaciones duplicadas?
+
+/lib/vidu/utils/errorHandler.ts - ¿Necesita ajustes?
+
+Webhook endpoint - ¿Maneja correctamente los estados?
+
+Manejo de reintentos - ¿Está implementado?
+
+Monitoreo y logs - ¿Sistema de observabilidad?

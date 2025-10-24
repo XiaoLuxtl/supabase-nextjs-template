@@ -1,5 +1,5 @@
-// /lib/creditsService.ts - VERSIÓN UNIFICADA Y MEJORADA
 import { createClient } from "@supabase/supabase-js";
+import { Database } from "@/types/database.types";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,264 +10,240 @@ interface CreditOperationResult {
   success: boolean;
   error?: string;
   newBalance?: number;
-  transactionId?: number;
+  video?: Database["public"]["Tables"]["video_generations"]["Row"];
+  balanceAfter?: number;
 }
 
-interface RpcResponse {
+interface AtomicTransactionResult {
+  success: boolean;
+  error?: string;
+  video?: Database["public"]["Tables"]["video_generations"]["Row"];
+  balanceAfter?: number;
+}
+
+interface RpcTransactionResult {
+  success: boolean;
+  error?: string;
+  video_id?: string;
+  video_data?: Database["public"]["Tables"]["video_generations"]["Row"];
+  new_balance?: number;
+  transaction_id?: string;
+}
+
+interface RpcRefundResult {
   success: boolean;
   error?: string;
   new_balance?: number;
-  transaction_id?: number;
+  transaction_id?: string;
 }
 
 export class CreditsService {
   /**
-   * ✅ CONSUMO SEGURO DE CRÉDITOS - ÚNICA FUENTE DE VERDAD
+   * ✅ TRANSACCIÓN ATÓMICA: Crear video + consumir créditos
+   * Elimina race conditions y garantiza consistencia
    */
-  static async consumeCreditsForVideo(
+  static async createVideoAndConsumeCredits(
     userId: string,
-    videoId: string
-  ): Promise<CreditOperationResult> {
+    prompt: string,
+    imageBase64?: string
+  ): Promise<AtomicTransactionResult> {
     try {
-      // 🔒 Validación adicional de seguridad
-      if (!userId || typeof userId !== "string") {
-        return {
-          success: false,
-          error: "User ID inválido",
-        };
-      }
-
-      // Validar formato UUID
-      const uuidRegex =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-      if (!uuidRegex.test(userId)) {
-        return {
-          success: false,
-          error: "Formato de User ID inválido",
-        };
-      }
-
-      if (!videoId || typeof videoId !== "string" || !uuidRegex.test(videoId)) {
-        return {
-          success: false,
-          error: "Video ID inválido",
-        };
-      }
-
-      console.log("🔐 Consumiendo créditos de forma segura:", {
+      console.log("🔐 [CreditsService] Starting atomic transaction:", {
         userId,
-        videoId,
       });
 
-      // Usar el cliente con service key para operaciones directas
-      const adminSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.PRIVATE_SUPABASE_SERVICE_KEY!
+      const { data, error } = await supabase.rpc(
+        "create_video_and_consume_credits_atomic",
+        {
+          p_user_id: userId,
+          p_prompt: prompt,
+          p_image_base64: imageBase64,
+        }
       );
-
-      // ✅ 1. Verificar que el usuario existe y obtener balance actual (TABLA CORRECTA)
-      const { data: userProfile, error: userError } = await adminSupabase
-        .from("user_profiles") // ← TABLA CORRECTA
-        .select("credits_balance")
-        .eq("id", userId) // ← COLUMNA CORRECTA
-        .single();
-
-      if (userError || !userProfile) {
-        console.error("❌ Error obteniendo balance del usuario:", userError);
-        return {
-          success: false,
-          error: "Usuario no encontrado o error de base de datos",
-        };
-      }
-
-      const currentBalance = userProfile.credits_balance; // ← CAMPO CORRECTO
-      console.log(`💰 Balance actual: ${currentBalance}`);
-
-      // 2. Verificar que tenga suficientes créditos
-      if (currentBalance < 1) {
-        return {
-          success: false,
-          error: "Créditos insuficientes",
-        };
-      }
-
-      // 3. Consumir 1 crédito de forma atómica
-      const newBalance = currentBalance - 1;
-
-      const { error: updateError } = await adminSupabase
-        .from("user_profiles") // ← TABLA CORRECTA
-        .update({
-          credits_balance: newBalance, // ← CAMPO CORRECTO
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", userId); // ← COLUMNA CORRECTA
-
-      if (updateError) {
-        console.error("❌ Error actualizando balance:", updateError);
-        return {
-          success: false,
-          error: `Error actualizando balance: ${updateError.message}`,
-        };
-      }
-
-      // 4. Registrar la transacción
-      const { error: transactionError } = await adminSupabase
-        .from("credit_transactions")
-        .insert({
-          user_id: userId,
-          amount: -1,
-          balance_after: newBalance, // ← IMPORTANTE: agregar este campo
-          transaction_type: "video_generation",
-          description: "Generación de video con Vidu",
-          video_id: videoId,
-          created_at: new Date().toISOString(),
-        });
-
-      if (transactionError) {
-        console.error("❌ Error registrando transacción:", transactionError);
-        // No retornamos error aquí porque el consumo ya se hizo
-      }
-
-      console.log(`✅ Créditos consumidos. Nuevo balance: ${newBalance}`);
-
-      return {
-        success: true,
-        newBalance,
-        transactionId: undefined,
-      };
-    } catch (error) {
-      console.error("❌ Error inesperado en consumeCreditsForVideo:", error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Error inesperado",
-      };
-    }
-  }
-
-  /**
-   * ✅ REEMBOLSO SEGURO DE CRÉDITOS
-   */
-  static async refundVideoCredits(
-    videoId: string
-  ): Promise<CreditOperationResult> {
-    try {
-      console.log("🔄 Procesando reembolso para video:", videoId);
-
-      // Primero obtener información del video para validar
-      const { data: video, error: videoError } = await supabase
-        .from("video_generations")
-        .select("user_id, credits_used, status")
-        .eq("id", videoId)
-        .single();
-
-      if (videoError || !video) {
-        return {
-          success: false,
-          error: "Video no encontrado",
-        };
-      }
-
-      // Solo reembolsar si se usaron créditos
-      if (video.credits_used === 0) {
-        console.log("ℹ️ No hay créditos que reembolsar");
-        return {
-          success: true,
-          newBalance: await this.getBalance(video.user_id),
-        };
-      }
-
-      // Usar RPC segura para reembolso
-      const { error, data } = await supabase.rpc("refund_credits_for_video", {
-        p_video_id: videoId,
-      });
 
       if (error) {
-        console.error("❌ RPC Error en reembolso:", error);
+        console.error("❌ [CreditsService] Atomic transaction failed:", error);
         return {
           success: false,
-          error: `Error en reembolso: ${error.message}`,
+          error: this.mapTransactionError(error.message),
         };
       }
 
-      const rpcResponse = data as RpcResponse;
+      const result: RpcTransactionResult = data as RpcTransactionResult;
 
-      if (!rpcResponse || !rpcResponse.success) {
+      if (!result.success) {
+        console.error("❌ [CreditsService] RPC returned error:", result.error);
         return {
           success: false,
-          error: rpcResponse?.error || "Error desconocido en reembolso",
+          error: result.error || "Unknown RPC error",
         };
       }
 
-      console.log(
-        `✅ Reembolso exitoso. Nuevo balance: ${rpcResponse.new_balance}`
-      );
+      console.log("✅ [CreditsService] Atomic transaction completed:", {
+        videoId: result.video_id,
+        newBalance: result.new_balance,
+      });
 
       return {
         success: true,
-        newBalance: rpcResponse.new_balance,
-        transactionId: rpcResponse.transaction_id,
+        video: result.video_data,
+        balanceAfter: result.new_balance,
       };
     } catch (error) {
-      console.error("❌ Error inesperado en refundVideoCredits:", error);
+      console.error(
+        "❌ [CreditsService] Unexpected error in atomic transaction:",
+        error
+      );
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Error inesperado",
+        error: "Internal server error",
       };
     }
   }
 
   /**
-   * ✅ OBTENER BALANCE ACTUAL
+   * ✅ REEMBOLSO AUTOMÁTICO para fallas de Vidu
+   */
+  static async refundForViduFailure(
+    videoId: string
+  ): Promise<CreditOperationResult> {
+    try {
+      console.log(
+        "🔄 [CreditsService] Processing automatic refund for Vidu failure:",
+        videoId
+      );
+
+      const { data, error } = await supabase.rpc(
+        "refund_credits_for_vidu_failure",
+        { p_video_id: videoId }
+      );
+
+      if (error) {
+        console.error("❌ [CreditsService] Auto-refund RPC error:", error);
+        return { success: false, error: error.message };
+      }
+
+      const result: RpcRefundResult = data as RpcRefundResult;
+
+      if (!result.success) {
+        console.error(
+          "❌ [CreditsService] Auto-refund RPC failed:",
+          result.error
+        );
+        return {
+          success: false,
+          error: result.error || "Unknown refund error",
+        };
+      }
+
+      console.log("✅ [CreditsService] Auto-refund completed:", {
+        videoId,
+        newBalance: result.new_balance,
+      });
+
+      return {
+        success: true,
+        newBalance: result.new_balance,
+      };
+    } catch (error) {
+      console.error(
+        "❌ [CreditsService] Unexpected error in auto-refund:",
+        error
+      );
+      return {
+        success: false,
+        error: "Refund system error",
+      };
+    }
+  }
+
+  /**
+   * ✅ OBTENER BALANCE (solo lectura)
    */
   static async getBalance(userId: string): Promise<number> {
     try {
-      const { data: profile, error } = await supabase
-        .from("user_profiles")
-        .select("credits_balance")
-        .eq("id", userId)
-        .single();
+      const { data, error } = await supabase.rpc("get_user_balance", {
+        p_user_id: userId,
+      });
 
       if (error) {
-        console.error("❌ Error obteniendo balance:", error);
+        console.error("❌ [CreditsService] Error getting balance:", error);
         return 0;
       }
 
-      return profile?.credits_balance || 0;
+      if (typeof data !== "number") {
+        console.warn("⚠️ [CreditsService] Balance is not a number:", data);
+        return 0;
+      }
+
+      return data;
     } catch (error) {
-      console.error("❌ Error inesperado obteniendo balance:", error);
+      console.error(
+        "❌ [CreditsService] Unexpected error getting balance:",
+        error
+      );
       return 0;
     }
   }
 
   /**
-   * ✅ VALIDAR CRÉDITOS SUFICIENTES
+   * 🗺️ Mapear errores de transacción a mensajes user-friendly
    */
-  static async validateSufficientCredits(userId: string): Promise<{
-    isValid: boolean;
-    currentBalance: number;
-    error?: string;
-  }> {
-    try {
-      const balance = await this.getBalance(userId);
+  private static mapTransactionError(error: string): string {
+    const errorMap: Record<string, string> = {
+      insufficient_credits: "Créditos insuficientes",
+      daily_limit_exceeded: "Límite diario alcanzado",
+      video_already_exists: "Generación ya en proceso",
+      user_not_found: "Usuario no encontrado",
+    };
 
-      if (balance < 1) {
+    return errorMap[error] || error || "Error al procesar la solicitud";
+  }
+
+  /**
+   * ⚠️ MÉTODO LEGACY - Mantener por compatibilidad temporal
+   * @deprecated Usar createVideoAndConsumeCredits en su lugar
+   */
+  static async consumeCreditsForVideo(
+    userId: string,
+    videoId: string
+  ): Promise<CreditOperationResult> {
+    console.warn(
+      "⚠️ [CreditsService] DEPRECATED: Using legacy consumeCreditsForVideo"
+    );
+
+    try {
+      const { data, error } = await supabase.rpc(
+        "consume_credit_for_video_secure",
+        {
+          p_user_id: userId,
+          p_video_id: videoId,
+        }
+      );
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      const result: RpcTransactionResult = data as RpcTransactionResult;
+
+      if (!result.success) {
         return {
-          isValid: false,
-          currentBalance: balance,
-          error: "Créditos insuficientes",
+          success: false,
+          error: result.error || "Unknown consumption error",
         };
       }
 
       return {
-        isValid: true,
-        currentBalance: balance,
+        success: true,
+        newBalance: result.new_balance,
       };
     } catch (error) {
-      console.error("❌ Error validando créditos:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Error inesperado";
       return {
-        isValid: false,
-        currentBalance: 0,
-        error: "Error al validar créditos",
+        success: false,
+        error: errorMessage,
       };
     }
   }

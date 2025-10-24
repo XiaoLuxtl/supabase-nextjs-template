@@ -1,11 +1,18 @@
-// src/hooks/useCredits.ts - FUENTE ÚNICA DE VERDAD
+// src/hooks/useCredits.ts - VERSIÓN SIMPLIFICADA Y SEGURA
 "use client";
 
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import { createSPAClient } from "@/lib/supabase/client";
 import { useGlobal } from "@/lib/context/GlobalContext";
+import {
+  isCreditsBalanceUpdate,
+  isValidCreditsBalance,
+  type UserProfileRealtimePayload,
+} from "@/types/type-guards";
 
-type ProfileBalance = { credits_balance: number };
+// Singleton para suscripciones
+let globalSubscription: { unsubscribe: () => void } | null = null;
+let subscriberCount = 0;
 
 export interface CreditTransaction {
   id: string;
@@ -19,10 +26,6 @@ export interface CreditTransaction {
   created_at: string;
 }
 
-// Singleton para evitar múltiples suscripciones
-let globalSubscription: { unsubscribe: () => void } | null = null;
-let subscriberCount = 0;
-
 export function useCredits() {
   const {
     user,
@@ -31,26 +34,59 @@ export function useCredits() {
     initialized,
   } = useGlobal();
 
-  // Estado local como fuente única para créditos
   const [balance, setBalance] = useState<number>(user?.credits_balance ?? 0);
-  const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
 
   const supabase = useMemo(() => createSPAClient(), []);
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const isMounted = useRef(true);
 
-  // Sincronizar con GlobalContext cuando el usuario cambia
-  useEffect(() => {
-    if (
-      user?.credits_balance !== undefined &&
-      user.credits_balance !== balance
-    ) {
-      setBalance(user.credits_balance);
-    }
-  }, [user?.credits_balance]);
+  // Handler type-safe para updates en tiempo real
+  const handleRealtimeUpdate = useCallback(
+    (payload: UserProfileRealtimePayload) => {
+      if (!isMounted.current) return;
 
-  // Configurar suscripción en tiempo real para cambios de créditos
+      try {
+        if (!isCreditsBalanceUpdate(payload)) {
+          console.warn("Invalid credits balance update payload:", payload);
+          return;
+        }
+
+        const { new: newData } = payload;
+        const newBalance = newData.credits_balance;
+
+        if (!isValidCreditsBalance(newBalance)) {
+          console.error("Invalid credits balance:", newBalance);
+          return;
+        }
+
+        // Verificar que el usuario coincide
+        if (user && newData.id !== user.id) {
+          console.warn("Credit update for different user");
+          return;
+        }
+
+        console.log("✅ Credits balance updated:", {
+          previous: balance,
+          new: newBalance,
+        });
+
+        setBalance(newBalance);
+        setLastUpdate(new Date());
+
+        // Notificar a GlobalContext para mantener consistencia
+        refreshUserProfile().catch((error) => {
+          console.error("Error refreshing global profile:", error);
+        });
+      } catch (error) {
+        console.error("Error processing realtime credits update:", error);
+      }
+    },
+    [balance, user, refreshUserProfile]
+  );
+
+  // Configurar suscripción en tiempo real
   useEffect(() => {
     if (!user?.id || !initialized) return;
 
@@ -58,10 +94,14 @@ export function useCredits() {
 
     const setupSubscription = async () => {
       try {
-        const channelName = `credits-${user.id}-${Date.now()}`; // Nombre único
+        if (globalSubscription) {
+          subscriberCount++;
+          subscriptionRef.current = globalSubscription;
+          return;
+        }
 
-        const channel = supabase
-          .channel(channelName) // Usar nombre único para evitar colisiones
+        const subscription = supabase
+          .channel(`credits-${user.id}-${Date.now()}`)
           .on(
             "postgres_changes",
             {
@@ -70,38 +110,22 @@ export function useCredits() {
               table: "user_profiles",
               filter: `id=eq.${user.id}`,
             },
-            (payload) => {
-              console.log("💰 Cambio en balance detectado:", payload);
-              const newBalance = (payload.new as any)?.credits_balance;
-
-              if (typeof newBalance === "number") {
-                setBalance(newBalance);
-                // Opcional: notificar a otros componentes
-                window.dispatchEvent(
-                  new CustomEvent("creditsUpdated", {
-                    detail: { newBalance, userId: user.id },
-                  })
-                );
-              }
+            (payload: unknown) => {
+              const typedPayload = payload as UserProfileRealtimePayload;
+              handleRealtimeUpdate(typedPayload);
             }
           )
-          .subscribe((status) => {
-            console.log(`💰 Subscription ${channelName}: ${status}`);
-
-            if (status === "CHANNEL_ERROR" || status === "CLOSED") {
-              console.warn(`Channel ${channelName} cerrado, reconectando...`);
-              setTimeout(() => {
-                if (isMounted.current) {
-                  setupSubscription();
-                }
-              }, 5000);
+          .subscribe((status, error) => {
+            if (error) {
+              console.error("Credits subscription error:", error);
             }
           });
 
-        return channel;
+        globalSubscription = subscription;
+        subscriberCount++;
+        subscriptionRef.current = subscription;
       } catch (error) {
-        console.error("Error setting up subscription:", error);
-        return null;
+        console.error("Error setting up credits subscription:", error);
       }
     };
 
@@ -114,7 +138,6 @@ export function useCredits() {
         subscriberCount--;
 
         if (subscriberCount === 0) {
-          console.log("🧹 Cleaning up global credits subscription");
           globalSubscription.unsubscribe();
           globalSubscription = null;
         }
@@ -122,9 +145,19 @@ export function useCredits() {
         subscriptionRef.current = null;
       }
     };
-  }, [user?.id, initialized, supabase, refreshUserProfile]);
+  }, [user?.id, initialized, supabase, handleRealtimeUpdate]);
 
-  // Función helper optimizada con retry y circuit breaker
+  // Sincronizar con GlobalContext cuando el usuario cambia
+  useEffect(() => {
+    if (
+      user?.credits_balance !== undefined &&
+      user.credits_balance !== balance
+    ) {
+      setBalance(user.credits_balance);
+    }
+  }, [user?.credits_balance, balance]);
+
+  // Función helper para fetch con retry
   const fetchWithRetry = useCallback(
     async (
       url: string,
@@ -143,7 +176,6 @@ export function useCredits() {
 
           if (response.ok) return response;
 
-          // No reintentar en errores 4xx (excepto 429 - Too Many Requests)
           if (
             response.status >= 400 &&
             response.status < 500 &&
@@ -153,10 +185,7 @@ export function useCredits() {
           }
 
           if (attempt < maxRetries) {
-            const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // Exponential backoff max 10s
-            console.log(
-              `Retrying request (${attempt + 1}/${maxRetries}) after ${delay}ms`
-            );
+            const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
             await new Promise((resolve) => setTimeout(resolve, delay));
           }
         } catch (error) {
@@ -171,54 +200,25 @@ export function useCredits() {
     []
   );
 
-  // Actualización optimista del balance
-  const updateBalanceOptimistically = useCallback((amount: number) => {
-    setBalance((prev) => {
-      const newBalance = prev + amount;
-      console.log(`💰 Optimistic balance update: ${prev} → ${newBalance}`);
-      return newBalance;
-    });
-  }, []);
-
-  // Rollback de actualización optimista
-  const revertOptimisticUpdate = useCallback((originalBalance: number) => {
-    console.log(`🔄 Reverting optimistic update to: ${originalBalance}`);
-    setBalance(originalBalance);
-  }, []);
-
-  const hasCredits = useMemo(() => balance > 0, [balance]);
-  const canAfford = useCallback((cost: number) => balance >= cost, [balance]);
-
-  const getCreditsDisplay = useCallback((credits: number) => {
-    return `${credits} ${credits === 1 ? "crédito" : "créditos"}`;
-  }, []);
-
-  // Consumir créditos con mejor UX y manejo de errores
+  // Consumir créditos - SOLO PARA USO DIRECTO (no desde useVideoGeneration)
   const consumeCreditsForVideo = useCallback(
     async (videoId: string, cost: number = 1) => {
       if (!user?.id) {
         throw new Error("Usuario no autenticado");
       }
 
-      if (!canAfford(cost)) {
+      if (balance < cost) {
         throw new Error("Créditos insuficientes");
       }
 
-      const originalBalance = balance;
-      let success = false;
+      setIsLoading(true);
 
       try {
-        setIsLoading(true);
-
-        // Actualización optimista
-        updateBalanceOptimistically(-cost);
-
         const response = await fetchWithRetry("/api/credits/consume", {
           method: "POST",
           body: JSON.stringify({
             userId: user.id,
             videoId,
-            cost,
           }),
         });
 
@@ -228,35 +228,23 @@ export function useCredits() {
           throw new Error(data.error || "Error al consumir créditos");
         }
 
-        success = true;
-        console.log("✅ Créditos consumidos exitosamente");
+        // Actualizar balance desde la respuesta
+        if (data.newBalance !== undefined) {
+          setBalance(data.newBalance);
+        }
 
         return {
           success: true,
           newBalance: data.newBalance,
-          transactionId: data.transactionId,
         };
       } catch (error) {
         console.error("Error consumiendo créditos:", error);
-
-        // Revertir actualización optimista en caso de error
-        if (!success) {
-          revertOptimisticUpdate(originalBalance);
-        }
-
-        throw error; // Re-lanzar para manejo en el componente
+        throw error;
       } finally {
         setIsLoading(false);
       }
     },
-    [
-      user?.id,
-      balance,
-      canAfford,
-      updateBalanceOptimistically,
-      revertOptimisticUpdate,
-      fetchWithRetry,
-    ]
+    [user?.id, balance, fetchWithRetry]
   );
 
   // Aplicar compra de créditos
@@ -271,7 +259,10 @@ export function useCredits() {
       try {
         const response = await fetchWithRetry("/api/credits/apply-purchase", {
           method: "POST",
-          body: JSON.stringify({ purchaseId }),
+          body: JSON.stringify({
+            purchaseId,
+            userId: user.id,
+          }),
         });
 
         const data = await response.json();
@@ -280,7 +271,6 @@ export function useCredits() {
           throw new Error(data.error || "Error al aplicar compra");
         }
 
-        // La suscripción en tiempo real actualizará el balance automáticamente
         return {
           success: true,
           newBalance: data.newBalance,
@@ -308,7 +298,10 @@ export function useCredits() {
       try {
         const response = await fetchWithRetry("/api/credits/refund", {
           method: "POST",
-          body: JSON.stringify({ videoId }),
+          body: JSON.stringify({
+            videoId,
+            userId: user.id,
+          }),
         });
 
         const data = await response.json();
@@ -339,18 +332,26 @@ export function useCredits() {
       await refreshUserProfile();
     } catch (error) {
       console.error("Error forcing balance refresh:", error);
+      throw error;
     } finally {
       setIsLoading(false);
     }
   }, [refreshUserProfile]);
 
+  // Utilidades
+  const hasCredits = useMemo(() => balance > 0, [balance]);
+  const canAfford = useCallback((cost: number) => balance >= cost, [balance]);
+  const getCreditsDisplay = useCallback((credits: number) => {
+    return `${credits} ${credits === 1 ? "crédito" : "créditos"}`;
+  }, []);
+
   return {
     // Estado
     balance,
-    transactions,
     isLoading: isLoading || globalLoading,
     initialized,
     hasCredits,
+    lastUpdate,
 
     // Acciones
     canAfford,
@@ -359,7 +360,6 @@ export function useCredits() {
     refundVideoCredits,
     forceRefreshBalance,
     getCreditsDisplay,
-    setTransactions,
 
     // Utilidades
     user,

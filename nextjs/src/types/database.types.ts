@@ -299,6 +299,7 @@ export type Database = {
           started_at: string | null
           status: string | null
           translated_prompt_en: string | null
+          updated_at: string | null
           user_id: string
           video_duration_actual: number | null
           video_fps: number | null
@@ -326,6 +327,7 @@ export type Database = {
           started_at?: string | null
           status?: string | null
           translated_prompt_en?: string | null
+          updated_at?: string | null
           user_id: string
           video_duration_actual?: number | null
           video_fps?: number | null
@@ -353,6 +355,7 @@ export type Database = {
           started_at?: string | null
           status?: string | null
           translated_prompt_en?: string | null
+          updated_at?: string | null
           user_id?: string
           video_duration_actual?: number | null
           video_fps?: number | null
@@ -419,6 +422,10 @@ export type Database = {
         Args: { p_user_id: string; p_video_id: string }
         Returns: Json
       }
+      create_video_and_consume_credits_atomic: {
+        Args: { p_image_base64?: string; p_prompt: string; p_user_id: string }
+        Returns: Json
+      }
       is_user_authenticated: { Args: never; Returns: boolean }
       log_credit_transaction_secure: {
         Args: {
@@ -429,9 +436,17 @@ export type Database = {
           p_user_id: string
           p_video_id?: string
         }
-        Returns: number
+        Returns: string
       }
       refund_credits_for_video: { Args: { p_video_id: string }; Returns: Json }
+      refund_credits_for_video_service: {
+        Args: { p_video_id: string }
+        Returns: Json
+      }
+      refund_credits_for_vidu_failure: {
+        Args: { p_video_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

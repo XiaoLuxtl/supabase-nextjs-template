@@ -132,23 +132,23 @@ async function validateVideoOwnershipAndState(
   }
 
   // Si el video ya tiene créditos usados, no permitir consumir más
-  if (video?.credits_used && video.credits_used > 0) {
-    logger.warn(
-      "Attempted to consume credits for video that already used credits",
-      {
-        authenticatedUserId,
-        videoId,
-        creditsUsed: video.credits_used,
-      }
-    );
-    return {
-      response: NextResponse.json(
-        { error: "Credits already consumed for this video" },
-        { status: 400 }
-      ),
-      video: null,
-    };
-  }
+  // if (video?.credits_used && video.credits_used > 0) {
+  //   logger.warn(
+  //     "Attempted to consume credits for video that already used credits",
+  //     {
+  //       authenticatedUserId,
+  //       videoId,
+  //       creditsUsed: video.credits_used,
+  //     }
+  //   );
+  //   return {
+  //     response: NextResponse.json(
+  //       { error: "Credits already consumed for this video" },
+  //       { status: 400 }
+  //     ),
+  //     video: null,
+  //   };
+  // }
 
   return { response: null, video };
 }

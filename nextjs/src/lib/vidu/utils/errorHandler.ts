@@ -1,3 +1,5 @@
+// /lib/vidu/utils/errorHandler.ts
+
 export class ErrorHandler {
   static handleError(error: unknown): { message: string; details?: string } {
     if (error instanceof Error) {

@@ -115,6 +115,7 @@ export function useVideos() {
     if (videosData) {
       const typedVideos = videosData as VideoGeneration[];
       setVideos(typedVideos);
+      setLoading(false);
 
       // Solo establecer selectedVideo si no hay uno seleccionado
       setSelectedVideo((current) => {
@@ -157,6 +158,7 @@ export function useVideos() {
         }
       )
       .subscribe((status, err) => {
+        // TODO revisar este error
         console.log(`Subscription status: ${status}`, err || "");
 
         if (status === "SUBSCRIBED") {

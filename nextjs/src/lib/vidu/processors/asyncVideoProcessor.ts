@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { ViduClient } from "../clients/viduClient";
 import { CreditsService } from "@/lib/creditsService";
 import { ImageProcessor } from "./imageProcessor";
-import { Database } from "@/types/database.types";
+import { Database, Json } from "@/types/database.types";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,7 +13,7 @@ interface AsyncProcessingResult {
   success: boolean;
   error?: string;
   videoId: string;
-  status: string;
+  status: string | null;
 }
 
 export class AsyncVideoProcessor {
@@ -45,7 +45,10 @@ export class AsyncVideoProcessor {
       }
 
       if (video.status !== "pending") {
-        console.warn("⚠️ Video already processed:", video.status);
+        console.warn(
+          "⚠️ [AsyncProcessor] Video already processed:",
+          video.status
+        );
         return {
           success: true,
           videoId,
@@ -62,15 +65,19 @@ export class AsyncVideoProcessor {
 
       // 3. Llamar a Vidu API
       console.log("🚀 [AsyncProcessor] Calling Vidu API...");
-      const viduResult = await ViduClient.generateVideo(
-        ViduClient.createPayload(refinedPrompt, imageBase64)
+      const viduResult = await ViduClient.generateVideoAsync(
+        refinedPrompt,
+        imageBase64
       );
 
       if (!viduResult.success || !viduResult.taskId) {
         console.error("❌ [AsyncProcessor] Vidu API failed:", viduResult.error);
 
         // ✅ REEMBOLSO AUTOMÁTICO
-        await this.handleViduFailure(videoId, viduResult.error);
+        await this.handleViduFailure(
+          videoId,
+          viduResult.error || "Unknown Vidu error"
+        );
 
         return {
           success: false,
@@ -209,7 +216,7 @@ export class AsyncVideoProcessor {
    */
   private static async handleUnexpectedError(
     videoId: string,
-    error: any
+    error: unknown
   ): Promise<void> {
     try {
       console.error("🚨 [AsyncProcessor] Handling unexpected error:", error);
@@ -296,7 +303,7 @@ export class AsyncVideoProcessor {
   private static async updateWithViduSuccess(
     videoId: string,
     taskId: string,
-    viduData: any,
+    viduData: unknown,
     refinedPrompt: string
   ): Promise<void> {
     try {
@@ -306,7 +313,7 @@ export class AsyncVideoProcessor {
         status: "processing",
         vidu_task_id: taskId,
         translated_prompt_en: refinedPrompt,
-        vidu_full_response: viduData,
+        vidu_full_response: JSON.parse(JSON.stringify(viduData)) as Json,
         started_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -337,7 +344,9 @@ export class AsyncVideoProcessor {
   /**
    * 📋 OBTENER REGISTRO DE VIDEO
    */
-  private static async getVideoRecord(videoId: string): Promise<any> {
+  private static async getVideoRecord(
+    videoId: string
+  ): Promise<Database["public"]["Tables"]["video_generations"]["Row"] | null> {
     try {
       const { data, error } = await supabase
         .from("video_generations")
