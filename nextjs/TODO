@@ -1,3 +1,13 @@
+# Agent Init
+
+
+
+# Agent End
+
+
+
+
+# Agent Ignore
 # Busca en VS Code:
 - "apply_credit_purchase" ok
 - "process-payment" ok
@@ -29,18 +39,13 @@ Añadir esta caracteristica
 
 Revisar este error
 
-D:\Projects\supabase…deoGeneration.ts:93 
- POST https://tool-entertainment-birds-presently.trycloudflare.com/api/vidu/generate 500 (Internal Server Error)
-D:\Projects\supabase…\utils\logger.ts:27 ℹ️ API response received 
-{status: 500, ok: false, statusText: ''}
-D:\Projects\supabase…\utils\logger.ts:18 🐛 API raw response 
-{responseText: '{"error":"Not authenticated"}'}
-D:\Projects\supabase…\utils\logger.ts:18 🐛 API parsed data 
-{data: {…}}
-D:\Projects\supabase…\utils\logger.ts:41 ⚠️ API returned error 
-{status: 500, data: {…}, ok: false}
-D:\Projects\supabase…obalContext.tsx:273 🔄 Refreshing credits balance only
-D:\Projects\supabase…ks\useVideos.ts:150 Received Supabase event: UPDATE c986b21a-7539-4695-94fc-8732431d3db3
-D:\Projects\supabase…ks\useVideos.ts:213 Removing failed video c986b21a-7539-4695-94fc-8732431d3db3 from list
-hot-reloader-client.js:241 [Fast Refresh] rebuilding
 
+
+
+🔐 Consumiendo créditos usando RPC segura: {
+  userId: '8f929b80-ab86-4705-8171-b0d60f02547f',
+  videoId: 'f47a593c-d71c-4963-a1b2-6f8e96f65d11'
+}
+
+
+# Agent Ignore end

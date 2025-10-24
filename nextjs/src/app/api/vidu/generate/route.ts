@@ -275,8 +275,7 @@ export async function GET(): Promise<NextResponse> {
   return NextResponse.json({
     message: "Generate API está funcionando",
     usage:
-      "Envía un POST con { prompt: string, image_base64?: string } (autenticación requerida)",
-    required_fields: ["prompt"],
-    optional_fields: ["image_base64"],
+      "Envía un POST con { prompt: string, image_base64: string } (autenticación requerida)",
+    required_fields: ["prompt", "image_base64"],
   });
 }

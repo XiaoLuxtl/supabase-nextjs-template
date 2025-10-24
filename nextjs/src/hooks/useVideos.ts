@@ -221,7 +221,7 @@ export function useVideos() {
           }
 
           // Para estados completados, obtener datos completos
-          if (updatedVideo.status === "completed") {
+          if (updatedVideo.status === "completed" || "created") {
             const { data: fullVideo, error } = await supabase
               .from("video_generations")
               .select("*")

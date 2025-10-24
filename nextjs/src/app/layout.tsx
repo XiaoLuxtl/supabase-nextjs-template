@@ -15,9 +15,13 @@ export const metadata: Metadata = {
     "Convierte imágenes en videos animados con música y frases personalizadas. Servicio rápido, económico y 100% online.",
 
   icons: {
-    icon: "/favicon.svg", // Favicon principal (SVG recomendado)
-    apple: "/apple-touch-icon.png", // Icono para dispositivos Apple
-    shortcut: "/favicon.ico", // Icono de respaldo si lo tienes
+    icon: {
+      url: "/favicon.svg",
+      sizes: "any",
+      type: "image/svg+xml",
+    },
+    apple: "/apple-touch-icon.png",
+    shortcut: "/favicon.ico",
   },
 
   keywords: [
