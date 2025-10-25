@@ -45,6 +45,7 @@ interface RpcApplyResult {
   credits_added?: number;
   new_balance?: number;
   already_applied?: boolean;
+  transaction_id?: string;
 }
 
 /**
@@ -206,66 +207,75 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 6. MANEJAR RESULTADO DE LA RPC MEJORADA
+    // ✅ VALIDACIÓN MEJORADA DE LA RESPUESTA RPC
+    if (!applyResult) {
+      logger.error("No response from RPC call", {
+        purchaseId,
+        userId: authenticatedUserId,
+      });
+      return NextResponse.json(
+        { error: "No response from credit application service" },
+        { status: 500 }
+      );
+    }
+
     const rpcResult = applyResult as RpcApplyResult;
 
     if (!rpcResult.success) {
-      // Manejar casos específicos de error
-      const errorCode = rpcResult.error_code;
+      // ✅ MANEJO MEJORADO DE ERRORES ESPECÍFICOS
+      if (rpcResult.already_applied) {
+        logger.info("Credits already applied, returning current balance", {
+          purchaseId,
+          userId: authenticatedUserId,
+          newBalance: rpcResult.new_balance,
+        });
 
-      if (errorCode === "UNAUTHORIZED_ACCESS") {
-        return NextResponse.json(
-          { error: "You don't have permission to apply this purchase" },
-          { status: 403 }
-        );
+        return NextResponse.json({
+          success: true,
+          credits_applied: false,
+          already_applied: true,
+          new_balance: rpcResult.new_balance,
+          message: "Credits were already applied to this purchase",
+        });
       }
 
-      if (errorCode === "PAYMENT_NOT_APPROVED") {
-        return NextResponse.json(
-          { error: "This purchase is not yet approved" },
-          { status: 400 }
-        );
-      }
-
-      if (errorCode === "PURCHASE_NOT_FOUND") {
-        return NextResponse.json(
-          { error: "Purchase not found" },
-          { status: 404 }
-        );
-      }
-
-      logger.error("Credit application failed via enhanced RPC", {
+      logger.error("Credit application failed via RPC", {
         purchaseId,
         userId: authenticatedUserId,
         error: rpcResult.error,
         errorCode: rpcResult.error_code,
       });
 
+      const userMessage = rpcResult.error?.includes("not approved")
+        ? "This purchase is not yet approved for credit application"
+        : rpcResult.error || "Failed to apply credits";
+
       return NextResponse.json(
         {
-          error: rpcResult.error || "Failed to apply credits",
-          errorCode: rpcResult.error_code,
+          error: userMessage,
+          error_code: rpcResult.error_code,
         },
         { status: 400 }
       );
     }
 
-    // 7. ÉXITO - YA NO NECESITAMOS OBTENER BALANCE POR SEPARADO
-    logger.info("Purchase credits applied successfully via enhanced RPC", {
+    // 7. ✅ ÉXITO - RESPUESTA COMPLETA
+    logger.info("Purchase credits applied successfully via RPC", {
       purchaseId,
       userId: authenticatedUserId,
       creditsAdded: rpcResult.credits_added,
       newBalance: rpcResult.new_balance,
-      alreadyApplied: rpcResult.already_applied,
+      transactionId: rpcResult.transaction_id,
     });
 
     return NextResponse.json({
       success: true,
-      creditsAdded: rpcResult.credits_added,
-      newBalance: rpcResult.new_balance,
-      packageName: purchase.package_name,
-      appliedAt: new Date().toISOString(),
-      alreadyApplied: rpcResult.already_applied || false,
+      credits_applied: true,
+      credits_added: rpcResult.credits_added,
+      new_balance: rpcResult.new_balance,
+      transaction_id: rpcResult.transaction_id,
+      package_name: purchase.package_name,
+      applied_at: new Date().toISOString(),
     });
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);

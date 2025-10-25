@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CreditsService } from "@/lib/creditsService";
 
-export async function POST(request: NextRequest) {
+interface RefundRequestBody {
+  videoId: string;
+}
+
+interface RefundResponse {
+  success: boolean;
+  newBalance?: number;
+  error?: string;
+}
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const body = await request.json();
+    const body: RefundRequestBody = await request.json();
     const { videoId } = body;
 
     if (!videoId) {
@@ -13,25 +23,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Reembolsar créditos usando el servicio
-    const result = await CreditsService.refundVideoCredits(videoId);
+    console.log("🔄 [Refund API] Processing refund for video:", videoId);
+
+    // ✅ USAR NUEVO MÉTODO: refundForViduFailure
+    const result = await CreditsService.refundForViduFailure(videoId);
 
     if (!result.success) {
+      console.error("❌ [Refund API] Refund failed:", result.error);
       return NextResponse.json(
-        { error: "Failed to refund credits" },
+        { error: result.error || "Failed to refund credits" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({
+    const response: RefundResponse = {
       success: true,
       newBalance: result.newBalance,
+    };
+
+    console.log("✅ [Refund API] Refund completed:", {
+      videoId,
+      newBalance: result.newBalance,
     });
+
+    return NextResponse.json(response);
   } catch (error) {
-    console.error("Error in refund credits API:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    console.error("💥 [Refund API] Unexpected error:", error);
+
+    const errorMessage =
+      error instanceof Error ? error.message : "Internal server error";
+
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

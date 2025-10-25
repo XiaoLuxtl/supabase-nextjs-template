@@ -317,7 +317,7 @@ async function applyCreditsIfApproved(
   newStatus: string,
   purchase: CreditPurchase,
   usedFallback: boolean,
-  isWebhookCall: boolean // ← Este parámetro debe estar
+  isWebhookCall: boolean
 ): Promise<NextResponse> {
   if (newStatus !== "approved") {
     logger.info("Payment not approved, skipping credit application", {
@@ -351,39 +351,48 @@ async function applyCreditsIfApproved(
     userId: purchase.user_id,
   });
 
+  // ✅ LLAMADA RPC ACTUALIZADA
   const { data: applyResult, error: applyError } = await supabase.rpc(
-    "apply_credit_purchase_webhook", // ← CORRECTO
+    "apply_credit_purchase_webhook",
     { p_purchase_id: external_reference }
   );
 
-  // Y después del RPC call, agrega:
   logger.info("Raw RPC response", {
     applyResult: applyResult,
     applyError: applyError,
   });
 
   if (applyError) {
-    logger.error("Error applying credits via enhanced RPC", {
+    logger.error("Error calling RPC for credit application", {
       purchaseId: external_reference,
       paymentId: payment_id,
       error: applyError,
     });
-    throw new Error(`Failed to apply credits: ${applyError.message}`);
+    throw new Error(`RPC call failed: ${applyError.message}`);
   }
 
-  // Manejar la nueva estructura de respuesta
-  if (applyResult && !applyResult.success) {
-    logger.error("Credit application failed via enhanced RPC", {
+  // ✅ MANEJO CORRECTO DE LA NUEVA ESTRUCTURA RPC
+  if (!applyResult) {
+    logger.error("No response from RPC call", {
+      purchaseId: external_reference,
+      paymentId: payment_id,
+    });
+    throw new Error("No response from credit application service");
+  }
+
+  if (!applyResult.success) {
+    logger.error("Credit application failed via RPC", {
       purchaseId: external_reference,
       error: applyResult.error,
       errorCode: applyResult.error_code,
       alreadyApplied: applyResult.already_applied,
     });
 
-    // Si ya estaba aplicado, no es un error fatal
+    // ✅ MANEJO MEJORADO DE "YA APLICADO"
     if (applyResult.already_applied) {
-      logger.info("Credits were already applied, continuing", {
+      logger.info("Credits were already applied, returning success", {
         purchaseId: external_reference,
+        newBalance: applyResult.new_balance,
       });
 
       return NextResponse.json({
@@ -399,10 +408,12 @@ async function applyCreditsIfApproved(
     throw new Error(`Credit application failed: ${applyResult.error}`);
   }
 
-  logger.info("Credits applied successfully via enhanced RPC", {
+  // ✅ ÉXITO - MANEJO CORRECTO DE LA RESPUESTA
+  logger.info("Credits applied successfully via RPC", {
     purchaseId: external_reference,
-    newBalance: applyResult?.new_balance,
-    creditsAdded: applyResult?.credits_added,
+    newBalance: applyResult.new_balance,
+    creditsAdded: applyResult.credits_added,
+    transactionId: applyResult.transaction_id,
     userId: purchase.user_id,
   });
 
@@ -410,8 +421,9 @@ async function applyCreditsIfApproved(
     success: true,
     status: newStatus,
     credits_applied: true,
-    new_balance: applyResult?.new_balance || 0,
-    credits_added: applyResult?.credits_added || 0,
+    new_balance: applyResult.new_balance,
+    credits_added: applyResult.credits_added,
+    transaction_id: applyResult.transaction_id,
     used_fallback: usedFallback,
   });
 }

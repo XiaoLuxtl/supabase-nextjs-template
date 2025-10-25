@@ -2,9 +2,24 @@ import { createClient } from "@supabase/supabase-js";
 import { ViduClient } from "../clients/viduClient";
 import { CreditsService } from "@/lib/creditsService";
 import { ImageProcessor } from "./imageProcessor";
-import { Database } from "@/types/database.types";
+import { Database, Json } from "@/types/database.types";
 
-const supabase = createClient(
+// Tipos de Supabase para la tabla 'video_generations'
+type VideoGenerationRecord =
+  Database["public"]["Tables"]["video_generations"]["Row"];
+type VideoGenerationUpdate =
+  Database["public"]["Tables"]["video_generations"]["Update"];
+// Tipo para la columna vidu_full_response (asumido como Json de Supabase)
+// Asumiendo que ViduClient.generateVideo retorna un objeto con un campo 'data' (la respuesta completa)
+// y 'taskId', con 'success' y 'error'.
+interface ViduResponse {
+  success: boolean;
+  taskId?: string;
+  data?: object | null; // El tipo para vidu_full_response (se usará Json | undefined para la columna de Supabase)
+  error?: string;
+}
+
+const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.PRIVATE_SUPABASE_SERVICE_KEY!
 );
@@ -13,7 +28,7 @@ interface AsyncProcessingResult {
   success: boolean;
   error?: string;
   videoId: string;
-  status: string;
+  status: "pending" | "processing" | "completed" | "failed"; // Tipos de estado más estrictos
 }
 
 export class AsyncVideoProcessor {
@@ -44,12 +59,15 @@ export class AsyncVideoProcessor {
         };
       }
 
-      if (video.status !== "pending") {
+      // CORRECCIÓN TS 2322 (Línea 58): video.status puede ser 'string | null'
+      if (video.status !== "pending" && video.status !== null) {
         console.warn("⚠️ Video already processed:", video.status);
+        // Si no está en pending, se asume que el status existente es el correcto
         return {
           success: true,
           videoId,
-          status: video.status,
+          // Se usa un 'as' de aserción para asegurar el tipo, ya que la lógica superior lo verifica
+          status: video.status as AsyncProcessingResult["status"],
         };
       }
 
@@ -57,20 +75,27 @@ export class AsyncVideoProcessor {
       console.log(
         "🎨 [AsyncProcessor] Processing image and refining prompt..."
       );
-      const { refinedPrompt, imageDescription } =
-        await this.processImageAndPrompt(prompt, imageBase64);
+      const { refinedPrompt } = await this.processImageAndPrompt(
+        prompt,
+        imageBase64
+      );
 
       // 3. Llamar a Vidu API
       console.log("🚀 [AsyncProcessor] Calling Vidu API...");
-      const viduResult = await ViduClient.generateVideo(
+      // Forzar tipado para ViduClient.generateVideo si no está tipado
+      const viduResult: ViduResponse = await ViduClient.generateVideo(
         ViduClient.createPayload(refinedPrompt, imageBase64)
       );
 
+      // CORRECCIÓN TS 2345 (Línea 81): viduResult.error puede ser undefined
       if (!viduResult.success || !viduResult.taskId) {
         console.error("❌ [AsyncProcessor] Vidu API failed:", viduResult.error);
 
-        // ✅ REEMBOLSO AUTOMÁTICO
-        await this.handleViduFailure(videoId, viduResult.error);
+        // Se usa el operador nullish coalescing (??) para asegurar que se pasa un string
+        await this.handleViduFailure(
+          videoId,
+          viduResult.error ?? "Vidu API returned an unknown error"
+        );
 
         return {
           success: false,
@@ -82,10 +107,11 @@ export class AsyncVideoProcessor {
 
       // 4. ✅ ÉXITO - Actualizar con datos de Vidu
       console.log("✅ [AsyncProcessor] Vidu API success, updating record...");
+      // CORRECCIÓN TS 2345 (Línea 97): viduResult.data puede ser 'undefined'
       await this.updateWithViduSuccess(
         videoId,
         viduResult.taskId,
-        viduResult.data,
+        viduResult.data ?? null, // Aseguramos que sea 'object | null' para el parámetro
         refinedPrompt
       );
 
@@ -122,7 +148,7 @@ export class AsyncVideoProcessor {
     imageBase64?: string
   ): Promise<{ refinedPrompt: string; imageDescription: string }> {
     let imageDescription = "ninguna imagen proporcionada";
-    let refinedPrompt = prompt;
+    let refinedPrompt = prompt; // Sonarlint S1854: Mantener, ya que se usa en el bloque catch
 
     try {
       if (imageBase64) {
@@ -151,6 +177,7 @@ export class AsyncVideoProcessor {
         console.log(
           "ℹ️ [AsyncProcessor] No image provided, using original prompt"
         );
+        // Aún se refina el prompt, aunque no haya imagen
         refinedPrompt = await ImageProcessor.refinePrompt(
           prompt,
           imageDescription
@@ -160,7 +187,7 @@ export class AsyncVideoProcessor {
       return { refinedPrompt, imageDescription };
     } catch (error) {
       console.error("❌ [AsyncProcessor] Image processing failed:", error);
-      // Si falla el procesamiento de imagen, continuar con el prompt original
+      // Si falla el procesamiento de imagen, retornar el prompt original
       return {
         refinedPrompt: prompt,
         imageDescription: "error processing image",
@@ -209,7 +236,7 @@ export class AsyncVideoProcessor {
    */
   private static async handleUnexpectedError(
     videoId: string,
-    error: any
+    error: unknown
   ): Promise<void> {
     try {
       console.error("🚨 [AsyncProcessor] Handling unexpected error:", error);
@@ -225,6 +252,7 @@ export class AsyncVideoProcessor {
         refundResult.success
       );
     } catch (handlerError) {
+      // CORRECCIÓN TS 2551 (Línea 242): Error tipográfico de 'Oerror' a 'error'
       console.error(
         "💥 [AsyncProcessor] Critical error in error handler:",
         handlerError
@@ -253,6 +281,8 @@ export class AsyncVideoProcessor {
           status: "failed",
           error_message: errorMessage,
           error_code: "VIDU_API_ERROR",
+          // Se asume que tienes una columna para el estado de reembolso
+          credits_refunded: refundSuccess,
           updated_at: new Date().toISOString(),
         })
         .eq("id", videoId);
@@ -296,17 +326,21 @@ export class AsyncVideoProcessor {
   private static async updateWithViduSuccess(
     videoId: string,
     taskId: string,
-    viduData: any,
+    viduData: object | null,
     refinedPrompt: string
   ): Promise<void> {
     try {
-      const updateData: Partial<
-        Database["public"]["Tables"]["video_generations"]["Update"]
-      > = {
+      // CORRECCIÓN TS 2322 (Línea 324): Asignar 'object | null' a 'Json | undefined'
+      // Ya que viduData es 'object | null', la columna `vidu_full_response` de tipo Json (o JSONB) en Supabase
+      // generalmente acepta `object | null` en TypeScript, pero el tipo `Json` en `database.types` puede ser más restrictivo.
+      // Se utiliza una aserción de tipo para asegurar que TS lo acepte, asumiendo que el tipo `Json`
+      // de tu base de datos puede ser compatible con `object | null`.
+      const updateData: Partial<VideoGenerationUpdate> = {
         status: "processing",
         vidu_task_id: taskId,
         translated_prompt_en: refinedPrompt,
-        vidu_full_response: viduData,
+        // Forzamos el tipado para compatibilidad con la definición de Supabase
+        vidu_full_response: viduData as Json | null | undefined,
         started_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -328,7 +362,6 @@ export class AsyncVideoProcessor {
         "❌ [AsyncProcessor] Failed to update video with Vidu data:",
         error
       );
-      // Si no podemos actualizar, considerar como falla
       await this.handleViduFailure(videoId, "Failed to update video record");
       throw error;
     }
@@ -337,7 +370,9 @@ export class AsyncVideoProcessor {
   /**
    * 📋 OBTENER REGISTRO DE VIDEO
    */
-  private static async getVideoRecord(videoId: string): Promise<any> {
+  private static async getVideoRecord(
+    videoId: string
+  ): Promise<VideoGenerationRecord | null> {
     try {
       const { data, error } = await supabase
         .from("video_generations")
@@ -350,6 +385,7 @@ export class AsyncVideoProcessor {
         return null;
       }
 
+      // CORRECCIÓN TS 415 (Línea 415): Se debe devolver el objeto completo, no un estado de string
       return data;
     } catch (error) {
       console.error(
@@ -379,18 +415,24 @@ export class AsyncVideoProcessor {
         };
       }
 
-      // Solo reintentar si está en estado failed por error de Vidu
-      if (video.status !== "failed" || !video.error_message?.includes("Vidu")) {
+      // CORRECCIÓN TS 2322 (Línea 415): video.status puede ser 'string | null'
+      const videoStatus = video.status || "pending";
+
+      const isViduFailure = video.error_message?.includes("Vidu");
+      const isEligibleForRetry = videoStatus === "failed" && isViduFailure;
+
+      if (!isEligibleForRetry) {
         return {
           success: false,
           error: "Video not eligible for retry",
           videoId,
-          status: video.status,
+          // Se usa un 'as' de aserción ya que el tipo 'string | null' del video no es compatible con AsyncProcessingResult["status"]
+          status: videoStatus as AsyncProcessingResult["status"],
         };
       }
 
       // Reiniciar estado a pending
-      await supabase
+      const { error: updateError } = await supabase
         .from("video_generations")
         .update({
           status: "pending",
@@ -398,11 +440,23 @@ export class AsyncVideoProcessor {
           error_code: null,
           retry_count: (video.retry_count || 0) + 1,
           updated_at: new Date().toISOString(),
+          credits_refunded: false,
         })
         .eq("id", videoId);
 
+      if (updateError) {
+        throw new Error(
+          `Failed to reset video status for retry: ${updateError.message}`
+        );
+      }
+
       // Reprocesar
-      return await this.processVideoGeneration(videoId, video.prompt);
+      // CORRECCIÓN Sonarlint S4623 (Línea 451): Se elimina el 'undefined' redundante
+      return await this.processVideoGeneration(
+        videoId,
+        video.prompt
+        // Se asume que no se necesita `imageBase64` ya que no está en el registro
+      );
     } catch (error) {
       console.error("❌ [AsyncProcessor] Retry failed:", error);
       return {

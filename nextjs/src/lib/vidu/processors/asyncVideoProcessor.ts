@@ -60,8 +60,10 @@ export class AsyncVideoProcessor {
       console.log(
         "🎨 [AsyncProcessor] Processing image and refining prompt..."
       );
-      const { refinedPrompt, imageDescription } =
-        await this.processImageAndPrompt(prompt, imageBase64);
+      const { refinedPrompt } = await this.processImageAndPrompt(
+        prompt,
+        imageBase64
+      );
 
       // 3. Llamar a Vidu API
       console.log("🚀 [AsyncProcessor] Calling Vidu API...");
