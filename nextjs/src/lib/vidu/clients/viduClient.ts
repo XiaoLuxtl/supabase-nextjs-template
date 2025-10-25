@@ -1,4 +1,11 @@
 // /lib/vidu/clients/viduClient.ts
+import { createClient } from "@supabase/supabase-js";
+
+// Cliente de Supabase para logging (usa service_role)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.PRIVATE_SUPABASE_SERVICE_KEY!
+);
 
 interface ViduPayload {
   model: string;
@@ -16,8 +23,7 @@ interface ViduResponse {
 
 export class ViduClient {
   /**
-   * ✅ LLAMADA PRINCIPAL A VIDU API (sin cambios en funcionalidad)
-   * Solo mejoras en logging y manejo de errores
+   * ✅ LLAMADA PRINCIPAL A VIDU API CON LOGGING MEJORADO
    */
   static async generateVideo(payload: ViduPayload): Promise<{
     success: boolean;
@@ -52,10 +58,19 @@ export class ViduClient {
         responseLength: responseText.length,
       });
 
+      // ✅ LOGGEAR ERRORES DE API
       if (!response.ok) {
         console.error("❌ [ViduClient] API Error:", {
           status: response.status,
           response: responseText,
+        });
+
+        // 🔒 GUARDAR LOG DEL ERROR EN LA BASE DE DATOS
+        await this.logApiError({
+          status: response.status,
+          error: responseText,
+          payload: payload,
+          responseTime: responseTime,
         });
 
         return {
@@ -70,6 +85,16 @@ export class ViduClient {
 
         if (!taskId) {
           console.error("❌ [ViduClient] No task_id in response:", viduData);
+
+          // 🔒 GUARDAR LOG DE ERROR DE FORMATO
+          await this.logApiError({
+            status: response.status,
+            error: "No task_id in Vidu response",
+            payload: payload,
+            responseTime: responseTime,
+            viduData: viduData,
+          });
+
           return {
             success: false,
             error: "No task_id in Vidu response",
@@ -89,7 +114,16 @@ export class ViduClient {
       } catch (parseError) {
         console.error("❌ [ViduClient] Parse Error:", {
           error: parseError,
-          responseText: responseText.substring(0, 200), // Log parcial
+          responseText: responseText.substring(0, 200),
+        });
+
+        // 🔒 GUARDAR LOG DE ERROR DE PARSING
+        await this.logApiError({
+          status: response.status,
+          error: `Parse error: ${parseError}`,
+          payload: payload,
+          responseTime: responseTime,
+          responseText: responseText.substring(0, 500),
         });
 
         return {
@@ -104,11 +138,78 @@ export class ViduClient {
         responseTime: `${responseTime}ms`,
       });
 
+      // 🔒 GUARDAR LOG DE ERROR DE RED
+      await this.logApiError({
+        status: 0, // 0 indica error de red
+        error: error instanceof Error ? error.message : String(error),
+        payload: payload,
+        responseTime: responseTime,
+      });
+
       return {
         success: false,
         error:
           error instanceof Error ? error.message : "Error calling Vidu API",
       };
+    }
+  }
+
+  /**
+   * 🔒 GUARDAR LOGS DE ERRORES DE API
+   */
+  private static async logApiError(errorInfo: {
+    status: number;
+    error: string;
+    payload: ViduPayload;
+    responseTime: number;
+    viduData?: ViduResponse;
+    responseText?: string;
+  }) {
+    try {
+      const { error: logError } = await supabase
+        .from("vidu_webhook_logs")
+        .insert({
+          vidu_task_id: null, // No hay task_id porque falló antes del procesamiento
+          payload: {
+            api_call_error: true,
+            status_code: errorInfo.status,
+            error_message: errorInfo.error.substring(0, 1000), // Limitar tamaño
+            response_time_ms: errorInfo.responseTime,
+            timestamp: new Date().toISOString(),
+            // Información del payload (limitada por seguridad)
+            prompt_preview: errorInfo.payload.prompt?.substring(0, 200),
+            has_images: errorInfo.payload.images.length > 0,
+            image_count: errorInfo.payload.images.length,
+            model: errorInfo.payload.model,
+            duration: errorInfo.payload.duration,
+            // Información adicional si existe
+            ...(errorInfo.viduData && { vidu_response: errorInfo.viduData }),
+            ...(errorInfo.responseText && {
+              response_preview: errorInfo.responseText,
+            }),
+          },
+          processed: true, // No necesita procesamiento adicional
+          received_at: new Date().toISOString(),
+          error_type:
+            errorInfo.status === 0
+              ? "network_error"
+              : errorInfo.status === 403
+              ? "api_403_forbidden"
+              : errorInfo.status === 429
+              ? "api_429_ratelimit"
+              : "api_error",
+        });
+
+      if (logError) {
+        console.error(
+          "❌ [ViduClient] Failed to save API error log:",
+          logError
+        );
+      } else {
+        console.log("✅ [ViduClient] API error logged successfully");
+      }
+    } catch (err) {
+      console.error("💥 [ViduClient] Exception logging API error:", err);
     }
   }
 
@@ -140,8 +241,7 @@ export class ViduClient {
   }
 
   /**
-   * 🚀 NUEVO: EJECUCIÓN ASÍNCRONA PARA EL PROCESADOR
-   * Solo envuelve la función existente para uso con AsyncVideoProcessor
+   * 🚀 EJECUCIÓN ASÍNCRONA (sin cambios)
    */
   static async generateVideoAsync(
     refinedPrompt: string,
@@ -152,7 +252,6 @@ export class ViduClient {
     data?: ViduResponse;
     error?: string;
   }> {
-    // Reutiliza la misma lógica, solo cambia el contexto de uso
     const payload = this.createPayload(refinedPrompt, imageBase64);
     return await this.generateVideo(payload);
   }

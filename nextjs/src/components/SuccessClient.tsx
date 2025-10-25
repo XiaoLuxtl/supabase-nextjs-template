@@ -6,7 +6,7 @@ import { useGlobal } from "@/lib/context/GlobalContext";
 import { useCredits } from "@/hooks/useCredits";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ProcessPaymentResponse } from "@/types/types";
+import { ProcessPaymentResponse } from "@/lib/mercadopago/types";
 import {
   CheckCircle,
   Sparkles,

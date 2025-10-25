@@ -1,4 +1,4 @@
-import { SupabaseClient } from "../clients/supabase-client";
+import { SupabaseClient } from "@/lib/mercadopago/clients/supabase-client";
 
 export class CreditApplier {
   static async applyCredits(
@@ -17,7 +17,11 @@ export class CreditApplier {
       }
 
       if (applyResult && !applyResult.success) {
-        if (applyResult.already_applied) {
+        // ✅ MEJORA: Manejar "already_applied" como éxito, no como error
+        if (
+          applyResult.already_applied ||
+          applyResult.message?.includes("already processed")
+        ) {
           console.log(`ℹ️ Credits already applied to purchase ${purchaseId}`);
           return { success: true };
         }

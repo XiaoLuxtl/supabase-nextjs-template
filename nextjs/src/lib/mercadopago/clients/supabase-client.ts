@@ -1,52 +1,37 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+// clients/supabase-client.ts
+import { createClient } from "@supabase/supabase-js";
 import { CreditPurchase, ApplyCreditResult } from "../types";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 /**
- * Cliente de Supabase específico para webhooks (server-side)
- * No necesita autenticación de usuario, solo acceso a datos
+ * CLIENTE SEGURO - Solo usa Service Role para operaciones internas
  */
-async function createWebhookSupabaseClient() {
-  const cookieStore = await cookies();
-
-  return createServerClient(
+class SecureSupabaseClient {
+  private static readonly client = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            for (const { name, value, options } of cookiesToSet) {
-              cookieStore.set(name, value, options);
-            }
-          } catch {
-            // Ignorar en contexto de webhook
-          }
-        },
-      },
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
+    process.env.PRIVATE_SUPABASE_SERVICE_KEY!
   );
+
+  /**
+   * Para operaciones que necesitan RLS (usuarios) - usar createServerClient
+   * Pero para logs internos usamos siempre service_role
+   */
+  static getClient() {
+    return this.client;
+  }
 }
 
 export class SupabaseClient {
   /**
-   * Obtiene el cliente de Supabase para webhooks
+   * Obtiene cliente seguro (service_role) para operaciones internas
    */
-  private static async getClient() {
-    return createWebhookSupabaseClient();
+  private static getSecureClient() {
+    return SecureSupabaseClient.getClient();
   }
 
   static async findPendingPurchase(): Promise<CreditPurchase | null> {
     try {
-      const supabase = await this.getClient();
+      const supabase = this.getSecureClient();
 
       const { data: recentPurchases, error } = await supabase
         .from("credit_purchases")
@@ -61,7 +46,6 @@ export class SupabaseClient {
       }
 
       const purchase = recentPurchases?.[0] || null;
-
       if (purchase) {
         console.log(`✅ Found pending purchase: ${purchase.id}`);
       } else {
@@ -81,7 +65,7 @@ export class SupabaseClient {
     status: string = "approved"
   ): Promise<{ error: PostgrestError | Error | null }> {
     try {
-      const supabase = await this.getClient();
+      const supabase = this.getSecureClient();
 
       const { error } = await supabase
         .from("credit_purchases")
@@ -104,13 +88,13 @@ export class SupabaseClient {
     error: PostgrestError | Error | null;
   }> {
     try {
-      const supabase = await this.getClient();
+      const supabase = this.getSecureClient();
 
-      const result = await supabase.rpc("apply_credit_purchase_secure", {
+      // ✅ Usar la nueva función v2 que maneja service_role
+      const result = await supabase.rpc("apply_credit_purchase_secure_v2", {
         p_purchase_id: purchaseId,
       });
 
-      // La nueva función retorna un objeto JSONB directamente
       return {
         data: result.data as ApplyCreditResult | null,
         error: result.error,
@@ -121,14 +105,11 @@ export class SupabaseClient {
     }
   }
 
-  /**
-   * Busca una compra específica por ID (para producción)
-   */
   static async findPurchaseById(
     purchaseId: string
   ): Promise<CreditPurchase | null> {
     try {
-      const supabase = await this.getClient();
+      const supabase = this.getSecureClient();
 
       const { data: purchase, error } = await supabase
         .from("credit_purchases")
@@ -148,15 +129,12 @@ export class SupabaseClient {
     }
   }
 
-  /**
-   * Encuentra compras pendientes de un usuario específico
-   */
   static async findPendingPurchasesByUser(
     userId: string,
     limit: number = 10
   ): Promise<CreditPurchase[]> {
     try {
-      const supabase = await this.getClient();
+      const supabase = this.getSecureClient();
 
       const { data: purchases, error } = await supabase
         .from("credit_purchases")
@@ -184,12 +162,9 @@ export class SupabaseClient {
     }
   }
 
-  /**
-   * Obtiene el balance actual de un usuario
-   */
   static async getUserBalance(userId: string): Promise<number | null> {
     try {
-      const supabase = await this.getClient();
+      const supabase = this.getSecureClient();
 
       const { data: profile, error } = await supabase
         .from("user_profiles")
@@ -210,7 +185,7 @@ export class SupabaseClient {
   }
 
   /**
-   * Log de webhooks para auditoría de seguridad
+   * 🔒 LOG SEGURO - Solo service_role puede acceder ahora
    */
   static async logWebhook(
     paymentId: string | null,
@@ -221,7 +196,7 @@ export class SupabaseClient {
     errorMessage?: string
   ): Promise<void> {
     try {
-      const supabase = await this.getClient();
+      const supabase = this.getSecureClient();
 
       await supabase.from("mercadopago_webhook_logs").insert({
         payment_id: paymentId?.substring(0, 100),
@@ -233,6 +208,8 @@ export class SupabaseClient {
         processed: isValid && !errorMessage,
         received_at: new Date().toISOString(),
       });
+
+      console.log(`✅ Webhook logged securely for ${eventType}: ${paymentId}`);
     } catch (error) {
       console.error("❌ Failed to log webhook:", error);
     }
@@ -245,7 +222,7 @@ export class SupabaseClient {
     if (!payload || typeof payload !== "object") return payload;
 
     try {
-      return structuredClone(payload);
+      return JSON.parse(JSON.stringify(payload)); // Deep clone seguro
     } catch {
       return { error: "Invalid payload structure" };
     }
