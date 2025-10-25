@@ -27,12 +27,7 @@ export interface CreditTransaction {
 }
 
 export function useCredits() {
-  const {
-    user,
-    refreshUserProfile,
-    loading: globalLoading,
-    initialized,
-  } = useGlobal();
+  const { user, loading: globalLoading, initialized } = useGlobal();
 
   const [balance, setBalance] = useState<number>(user?.credits_balance ?? 0);
   const [isLoading, setIsLoading] = useState(false);
@@ -41,6 +36,8 @@ export function useCredits() {
   const supabase = useMemo(() => createSPAClient(), []);
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const isMounted = useRef(true);
+
+  const { refreshUserProfile } = useGlobal();
 
   // Handler type-safe para updates en tiempo real
   const handleRealtimeUpdate = useCallback(
@@ -74,16 +71,11 @@ export function useCredits() {
 
         setBalance(newBalance);
         setLastUpdate(new Date());
-
-        // Notificar a GlobalContext para mantener consistencia
-        refreshUserProfile().catch((error) => {
-          console.error("Error refreshing global profile:", error);
-        });
       } catch (error) {
         console.error("Error processing realtime credits update:", error);
       }
     },
-    [balance, user, refreshUserProfile]
+    [balance, user]
   );
 
   // Configurar suscripción en tiempo real

@@ -157,6 +157,7 @@ export class ViduClient {
   /**
    * 🔒 GUARDAR LOGS DE ERRORES DE API
    */
+  // Asumiendo que ViduPayload, ViduResponse y supabase están definidos en el scope
   private static async logApiError(errorInfo: {
     status: number;
     error: string;
@@ -165,40 +166,57 @@ export class ViduClient {
     viduData?: ViduResponse;
     responseText?: string;
   }) {
+    // 1. Determinar el tipo de error usando un SWITCH (Alternativa a las ternarias)
+    let errorType: string;
+
+    switch (errorInfo.status) {
+      case 0:
+        errorType = "network_error";
+        break;
+      case 403:
+        errorType = "api_403_forbidden";
+        break;
+      case 429:
+        errorType = "api_429_ratelimit";
+        break;
+      default:
+        errorType = "api_error";
+        break;
+    }
+
+    // 2. Definir el objeto de log completo
+    const errorLogData = {
+      vidu_task_id: null, // No hay task_id porque falló antes del procesamiento
+      payload: {
+        api_call_error: true,
+        status_code: errorInfo.status,
+        error_message: errorInfo.error.substring(0, 1000), // Limitar tamaño
+        response_time_ms: errorInfo.responseTime,
+        timestamp: new Date().toISOString(),
+
+        // Información del payload (limitada por seguridad)
+        prompt_preview: errorInfo.payload.prompt?.substring(0, 200),
+        has_images: errorInfo.payload.images.length > 0,
+        image_count: errorInfo.payload.images.length,
+        model: errorInfo.payload.model,
+        duration: errorInfo.payload.duration,
+
+        // Información adicional si existe (Spread syntax)
+        ...(errorInfo.viduData && { vidu_response: errorInfo.viduData }),
+        ...(errorInfo.responseText && {
+          response_preview: errorInfo.responseText,
+        }),
+      },
+      processed: true, // No necesita procesamiento adicional
+      received_at: new Date().toISOString(),
+      error_type: errorType, // 👈 Usamos la variable determinada por el SWITCH
+    };
+
+    // 3. Ejecutar la inserción en la base de datos
     try {
       const { error: logError } = await supabase
         .from("vidu_webhook_logs")
-        .insert({
-          vidu_task_id: null, // No hay task_id porque falló antes del procesamiento
-          payload: {
-            api_call_error: true,
-            status_code: errorInfo.status,
-            error_message: errorInfo.error.substring(0, 1000), // Limitar tamaño
-            response_time_ms: errorInfo.responseTime,
-            timestamp: new Date().toISOString(),
-            // Información del payload (limitada por seguridad)
-            prompt_preview: errorInfo.payload.prompt?.substring(0, 200),
-            has_images: errorInfo.payload.images.length > 0,
-            image_count: errorInfo.payload.images.length,
-            model: errorInfo.payload.model,
-            duration: errorInfo.payload.duration,
-            // Información adicional si existe
-            ...(errorInfo.viduData && { vidu_response: errorInfo.viduData }),
-            ...(errorInfo.responseText && {
-              response_preview: errorInfo.responseText,
-            }),
-          },
-          processed: true, // No necesita procesamiento adicional
-          received_at: new Date().toISOString(),
-          error_type:
-            errorInfo.status === 0
-              ? "network_error"
-              : errorInfo.status === 403
-              ? "api_403_forbidden"
-              : errorInfo.status === 429
-              ? "api_429_ratelimit"
-              : "api_error",
-        });
+        .insert(errorLogData); // Insertamos el objeto limpio
 
       if (logError) {
         console.error(
