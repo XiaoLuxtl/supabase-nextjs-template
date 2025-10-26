@@ -63,6 +63,75 @@ type ValidationResult =
     }
   | { success: false; error: string; status: number };
 
+/**
+ * MARCA COMO CANCELLED las compras pendientes antiguas del usuario
+ * Mantiene el historial y evita que usuarios queden bloqueados
+ */
+async function cleanupOldPendingPurchases(
+  userId: string
+): Promise<{ cancelledCount: number }> {
+  try {
+    const oneHourAgo = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
+
+    // PRIMERO: Contar cuántas se van a cancelar
+    const { count, error: countError } = await supabase
+      .from("credit_purchases")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("payment_status", "pending")
+      .lt("created_at", oneHourAgo);
+
+    if (countError) {
+      logger.error("Error counting pending purchases for cleanup", {
+        userId,
+        error: countError.message,
+      });
+      return { cancelledCount: 0 };
+    }
+
+    const pendingCount = count || 0;
+
+    // SI HAY PENDIENTES ANTIGUAS: Cancelarlas
+    if (pendingCount > 0) {
+      const { data, error: updateError } = await supabase
+        .from("credit_purchases")
+        .update({
+          payment_status: "cancelled",
+          updated_at: new Date().toISOString(),
+          cancellation_reason: "auto_cancelled_timeout",
+        })
+        .eq("user_id", userId)
+        .eq("payment_status", "pending")
+        .lt("created_at", oneHourAgo)
+        .select("id"); // Solo para verificar qué se actualizó
+
+      if (updateError) {
+        logger.error("Error cancelling old pending purchases", {
+          userId,
+          error: updateError.message,
+        });
+        return { cancelledCount: 0 };
+      }
+
+      logger.info("Auto-cancelled old pending purchases", {
+        userId,
+        cancelledCount: pendingCount,
+        cancelledIds: data?.map((p) => p.id),
+      });
+
+      return { cancelledCount: pendingCount };
+    }
+
+    return { cancelledCount: 0 };
+  } catch (error) {
+    logger.error("Exception in pending purchases cancellation", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { cancelledCount: 0 };
+  }
+}
+
 async function validateInput(
   body: PaymentRequestBody,
   authenticatedUserId: string
@@ -101,10 +170,22 @@ type LimitCheckResult =
 async function checkPendingPurchasesLimit(
   authenticatedUserId: string
 ): Promise<LimitCheckResult> {
-  // 🛡️ RATE LIMITING: Verificar compras pendientes del usuario
+  // 🧹 PRIMERO: Cancelar pending antiguas antes de verificar el límite
+  const { cancelledCount } = await cleanupOldPendingPurchases(
+    authenticatedUserId
+  );
+
+  if (cancelledCount > 0) {
+    logger.info("Auto-cancelled purchases before limit check", {
+      userId: authenticatedUserId,
+      cancelledCount,
+    });
+  }
+
+  // 🛡️ LUEGO: Verificar compras pendientes actuales del usuario
   const { data: pendingPurchases, error: pendingError } = await supabase
     .from("credit_purchases")
-    .select("id")
+    .select("id, created_at, package_name, credits_amount")
     .eq("user_id", authenticatedUserId)
     .eq("payment_status", "pending");
 
@@ -113,21 +194,33 @@ async function checkPendingPurchasesLimit(
     return { success: false, error: "Error interno del servidor", status: 500 };
   }
 
-  if (
-    pendingPurchases &&
-    pendingPurchases.length >= VALIDATION_LIMITS.MAX_PENDING_PURCHASES
-  ) {
-    logger.warn("User has too many pending purchases", {
+  const currentPending = pendingPurchases?.length || 0;
+
+  if (currentPending >= VALIDATION_LIMITS.MAX_PENDING_PURCHASES) {
+    logger.warn("User has too many pending purchases even after cleanup", {
       userId: authenticatedUserId,
-      pendingCount: pendingPurchases.length,
+      pendingCount: currentPending,
       limit: VALIDATION_LIMITS.MAX_PENDING_PURCHASES,
+      pendingPurchases: pendingPurchases?.map((p) => ({
+        id: p.id,
+        package: p.package_name,
+        credits: p.credits_amount,
+        age: new Date(p.created_at).toISOString(),
+      })),
     });
     return {
       success: false,
-      error: `Demasiadas compras pendientes. Máximo ${VALIDATION_LIMITS.MAX_PENDING_PURCHASES} compras pendientes permitidas.`,
+      error: `Tienes ${currentPending} compras pendientes. El máximo permitido es ${VALIDATION_LIMITS.MAX_PENDING_PURCHASES}. Por favor, espera a que se procesen las actuales o contacta soporte.`,
       status: 429,
     };
   }
+
+  logger.info("Pending purchases check passed", {
+    userId: authenticatedUserId,
+    pendingCount: currentPending,
+    recentlyCancelled: cancelledCount,
+    limit: VALIDATION_LIMITS.MAX_PENDING_PURCHASES,
+  });
 
   return { success: true };
 }
