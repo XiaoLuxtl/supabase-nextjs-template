@@ -9,6 +9,12 @@ class Logger {
     process.env.NEXT_PUBLIC_NODE_ENV !== "production" &&
     process.env.NODE_ENV !== "production";
   private readonly isTest = process.env.NODE_ENV === "test";
+  private get forceVerboseLogging(): boolean {
+    return (
+      process.env.NEXT_PUBLIC_FORCE_VERBOSE_LOGGING === "true" ||
+      process.env.FORCE_VERBOSE_LOGGING === "true"
+    );
+  }
 
   /**
    * Log de desarrollo - Solo visible en desarrollo
@@ -23,7 +29,7 @@ class Logger {
    * Log informativo - Visible en desarrollo, limitado en producción
    */
   info(message: string, context?: LogContext) {
-    if (this.isDevelopment) {
+    if (this.isDevelopment || this.forceVerboseLogging) {
       console.info(`ℹ️ ${message}`, context || "");
     } else if (!this.isTest) {
       // En producción, solo logs críticos sin contexto sensible
@@ -57,7 +63,7 @@ class Logger {
   mercadopago(message: string, context?: LogContext) {
     const safeMessage = this.sanitizeMessage(message);
     const safeContext = this.sanitizeMercadoPagoContext(context);
-    if (this.isDevelopment) {
+    if (this.isDevelopment || this.forceVerboseLogging) {
       console.log(`💳 ${safeMessage}`, safeContext || "");
     } else {
       // En producción, logs más limitados
@@ -71,7 +77,7 @@ class Logger {
   auth(message: string, context?: LogContext) {
     const safeMessage = this.sanitizeMessage(message);
     const safeContext = this.sanitizeAuthContext(context);
-    if (this.isDevelopment) {
+    if (this.isDevelopment || this.forceVerboseLogging) {
       console.log(`🔐 ${safeMessage}`, safeContext || "");
     }
   }
@@ -80,7 +86,7 @@ class Logger {
    * Log específico de base de datos
    */
   db(message: string, context?: LogContext) {
-    if (this.isDevelopment) {
+    if (this.isDevelopment || this.forceVerboseLogging) {
       console.log(`🗄️ ${message}`, context || "");
     }
   }
