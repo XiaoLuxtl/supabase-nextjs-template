@@ -12,6 +12,7 @@ import { VideoPlayerMain } from "@/components/VideoPlayerMain";
 import { VideoPlayerMobile } from "@/components/VideoPlayerMobile";
 import { ArrowDownToLine, Loader2, RefreshCw } from "lucide-react";
 import { useGlobal } from "@/lib/context/GlobalContext";
+import { ErrorMessage } from "@/components/ui/error-message";
 
 const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
   const { loading: authLoading, initialized } = useGlobal();
@@ -46,12 +47,20 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
     isGenerating,
     error: generationError,
     generateVideo: handleGenerateClick,
+    progress,
+    clearError,
   } = useVideoGeneration({
     selectedFile,
-    preview,
     prompt,
+    preview,
     resetImage,
     setPrompt,
+    onSuccess: () => {
+      refreshVideos();
+    },
+    onError: (error) => {
+      console.error("Generation error:", error);
+    },
   });
 
   const currentError = useMemo(
@@ -172,6 +181,9 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
 
         {/* Área de videos */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Mensaje de error - Solo visible en desktop */}
+          <ErrorMessage error={currentError} className="hidden lg:block mb-4" />
+
           {/* Header con controles */}
           <div className="hidden lg:flex justify-between items-center pb-2 border-b border-zinc-800">
             <div className="text-sm font-semibold">

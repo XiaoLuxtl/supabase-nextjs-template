@@ -1,3 +1,5 @@
+// src/lib/vidu/processors/videoGenerationProcessor.ts
+
 import { createClient } from "@supabase/supabase-js";
 import { ViduClient } from "../clients/viduClient";
 import { CreditsService } from "@/lib/creditsService";

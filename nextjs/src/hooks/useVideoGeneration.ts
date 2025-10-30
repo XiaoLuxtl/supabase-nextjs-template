@@ -80,6 +80,10 @@ const getGenerationErrorMessage = (error: unknown): string => {
       return "Servicio temporalmente no disponible. Intenta en unos minutos.";
     }
 
+    if (message.includes("nsfw content detected")) {
+      return `Contenido inapropiado detectado: La imagen contiene contenido no permitido. Por favor, usa una imagen diferente. Tus créditos han sido reembolsados automáticamente.`;
+    }
+
     if (message.includes("content") || message.includes("policy")) {
       return "El contenido no cumple con nuestras políticas. Usa una imagen y descripción diferentes.";
     }
@@ -313,15 +317,28 @@ export function useVideoGeneration({
         clearInterval(progressInterval);
         setProgress(0);
 
-        const errorMessage = getGenerationErrorMessage(err);
+        // Si es un error de NSFW o error de API, usar el mensaje directamente
+        const errorMessage =
+          err instanceof Error &&
+          (err.message.includes("NSFW content detected") ||
+            err.message.includes("API"))
+            ? err.message
+            : getGenerationErrorMessage(err);
 
-        // Log detallado
-        logger.error("Generation failed with details", {
-          error: err,
-          userMessage: errorMessage,
-          status: err instanceof Error ? "Error" : "Unknown",
-        });
+        // Log detallado (solo si no es NSFW para evitar logs duplicados)
+        if (
+          !(err instanceof Error) ||
+          !err.message.includes("NSFW content detected")
+        ) {
+          logger.error("Generation failed with details", {
+            error: err,
+            userMessage: errorMessage,
+            status: err instanceof Error ? "Error" : "Unknown",
+          });
+        }
 
+        // Asegurar que el error se propague y se muestre
+        setIsGenerating(false);
         setError(errorMessage);
         onError?.(errorMessage);
 

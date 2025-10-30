@@ -1,3 +1,5 @@
+// src/lib/vidu/processors/asyncVideoProcessor.ts
+
 import { createClient } from "@supabase/supabase-js";
 import { ViduClient } from "../clients/viduClient";
 import { CreditsService } from "@/lib/creditsService";
@@ -114,9 +116,14 @@ export class AsyncVideoProcessor {
       // 🔄 REEMBOLSO POR ERROR INESPERADO
       await this.handleUnexpectedError(videoId, error);
 
+      // Si es un error NSFW, devolver el mensaje específico
+      const isNSFWError =
+        error instanceof Error &&
+        error.message.includes("NSFW content detected");
+
       return {
         success: false,
-        error: "Unexpected processing error",
+        error: isNSFWError ? error.message : "Unexpected processing error",
         videoId,
         status: "failed",
       };
@@ -169,7 +176,16 @@ export class AsyncVideoProcessor {
       return { refinedPrompt, imageDescription };
     } catch (error) {
       console.error("❌ [AsyncProcessor] Image processing failed:", error);
-      // Si falla el procesamiento de imagen, continuar con el prompt original
+
+      // Si es error NSFW, propagarlo específicamente
+      if (
+        error instanceof Error &&
+        error.message.includes("NSFW content detected")
+      ) {
+        throw error; // Propagar el error NSFW
+      }
+
+      // Para otros errores de procesamiento de imagen, continuar con el prompt original
       return {
         refinedPrompt: prompt,
         imageDescription: "error processing image",

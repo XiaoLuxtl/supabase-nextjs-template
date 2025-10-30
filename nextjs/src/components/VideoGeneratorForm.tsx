@@ -2,13 +2,8 @@
 "use client";
 
 import React from "react";
-import {
-  AlertCircle,
-  DollarSign,
-  Loader2,
-  CreditCard,
-  Zap,
-} from "lucide-react";
+import { DollarSign, Loader2, CreditCard, Zap } from "lucide-react";
+import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import ImageUpload from "@/components/ImageUpload";
 import { DropzoneRootProps, DropzoneInputProps } from "react-dropzone";
@@ -50,13 +45,8 @@ export const VideoGeneratorForm: React.FC<VideoGeneratorFormProps> = React.memo(
           Imagen a Video
         </h1>
 
-        {/* Mensaje de error */}
-        {error && (
-          <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
-            <p className="text-red-200 text-sm">{error}</p>
-          </div>
-        )}
+        {/* Mensaje de error - Solo visible en mobile */}
+        <ErrorMessage error={error} className="md:hidden" />
 
         {/* Alerta cuando no hay créditos */}
         {!hasCredits && (
