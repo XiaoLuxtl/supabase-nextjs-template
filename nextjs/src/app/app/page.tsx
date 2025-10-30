@@ -47,8 +47,8 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
     isGenerating,
     error: generationError,
     generateVideo: handleGenerateClick,
-    progress,
-    clearError,
+    // progress,
+    // clearError,
   } = useVideoGeneration({
     selectedFile,
     prompt,
