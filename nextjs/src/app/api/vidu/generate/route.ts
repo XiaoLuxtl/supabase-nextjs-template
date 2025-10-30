@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { CreditsService } from "@/lib/creditsService";
 import { authenticateUser } from "@/lib/auth";
 import { AsyncVideoProcessor } from "@/lib/vidu/processors/asyncVideoProcessor";
+import { ImageProcessor } from "@/lib/vidu/processors/imageProcessor";
 
 interface GenerateRequestBody {
   prompt: string;
@@ -45,6 +46,30 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       promptLength: prompt.length,
       hasImage: !!image_base64,
     });
+
+    // 2.5. 🔍 VALIDAR CONTENIDO NSFW ANTES DE CONSUMIR CRÉDITOS
+    if (image_base64) {
+      console.log("🔍 [Generate] Validating image content for NSFW...");
+      try {
+        const imageResult = await ImageProcessor.processImage(image_base64);
+        if (imageResult.nsfwCheck?.isNSFW) {
+          console.log("🚫 [Generate] NSFW content detected, rejecting request");
+          return NextResponse.json(
+            {
+              error: `NSFW content detected: ${imageResult.nsfwCheck.reason}`,
+            },
+            { status: 400 }
+          );
+        }
+        console.log("✅ [Generate] Image content validated successfully");
+      } catch (error) {
+        console.error("❌ [Generate] Error validating image:", error);
+        return NextResponse.json(
+          { error: "Error al validar contenido de imagen" },
+          { status: 500 }
+        );
+      }
+    }
 
     // 3. ✅ TRANSACCIÓN ATÓMICA: Crear video + Consumir créditos
     const transactionResult = await CreditsService.createVideoAndConsumeCredits(

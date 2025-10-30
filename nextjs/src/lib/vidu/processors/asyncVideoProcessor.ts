@@ -146,10 +146,17 @@ export class AsyncVideoProcessor {
 
         const imageResult = await ImageProcessor.processImage(imageBase64);
 
-        // Validar contenido NSFW
+        // ⚠️ DEFENSA EN PROFUNDIDAD: Si por alguna razón llega NSFW aquí,
+        // significa que la validación del endpoint falló (bug crítico)
         if (imageResult.nsfwCheck?.isNSFW) {
+          console.error(
+            "🚨 [AsyncProcessor] CRÍTICO: NSFW detectado en procesamiento asíncrono!"
+          );
+          console.error(
+            "🚨 [AsyncProcessor] Esto significa que la validación del endpoint falló"
+          );
           throw new Error(
-            `NSFW content detected: ${imageResult.nsfwCheck.reason}`
+            `CRITICAL: NSFW content detected in async processing: ${imageResult.nsfwCheck.reason}`
           );
         }
 

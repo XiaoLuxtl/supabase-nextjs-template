@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/next";
 import CookieConsent from "@/components/Cookies";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { GlobalProvider } from "@/lib/context/GlobalContext";
+import { NotificationProvider } from "@/components/providers/NotificationProvider";
 import "@/lib/utils/logger"; // ✅ IMPORTACIÓN CLAVE: Asegura que se ejecute al inicio
 
 export const metadata: Metadata = {
@@ -71,7 +72,10 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={theme}>
-        <GlobalProvider>{children}</GlobalProvider>
+        <GlobalProvider>
+          {children}
+          <NotificationProvider />
+        </GlobalProvider>
         <Analytics />
         <CookieConsent />
         {gaID && <GoogleAnalytics gaId={gaID} />}

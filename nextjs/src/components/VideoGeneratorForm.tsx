@@ -3,7 +3,6 @@
 
 import React from "react";
 import { DollarSign, Loader2, CreditCard, Zap } from "lucide-react";
-import { ErrorMessage } from "@/components/ui/error-message";
 import Link from "next/link";
 import ImageUpload from "@/components/ImageUpload";
 import { DropzoneRootProps, DropzoneInputProps } from "react-dropzone";
@@ -11,7 +10,6 @@ import { useCredits } from "@/hooks/useCredits";
 
 interface VideoGeneratorFormProps {
   isGenerating: boolean;
-  error: string | null;
   selectedFile: File | null;
   preview: string | null;
   prompt: string;
@@ -26,7 +24,6 @@ interface VideoGeneratorFormProps {
 export const VideoGeneratorForm: React.FC<VideoGeneratorFormProps> = React.memo(
   ({
     isGenerating,
-    error,
     preview,
     prompt,
     onClearImage,
@@ -44,9 +41,6 @@ export const VideoGeneratorForm: React.FC<VideoGeneratorFormProps> = React.memo(
         <h1 className="text-3xl font-extrabold text-emerald-500">
           Imagen a Video
         </h1>
-
-        {/* Mensaje de error - Solo visible en mobile */}
-        <ErrorMessage error={error} className="md:hidden" />
 
         {/* Alerta cuando no hay créditos */}
         {!hasCredits && (

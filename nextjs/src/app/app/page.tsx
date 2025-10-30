@@ -1,7 +1,7 @@
 // src/app/app/page.tsx - VERSIÓN SIMPLIFICADA
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import useDragScroll from "@/hooks/useDragScroll";
 import { useVideos } from "@/hooks/useVideos";
 import { useImageUpload } from "@/hooks/useImageUpload";
@@ -12,7 +12,6 @@ import { VideoPlayerMain } from "@/components/VideoPlayerMain";
 import { VideoPlayerMobile } from "@/components/VideoPlayerMobile";
 import { ArrowDownToLine, Loader2, RefreshCw } from "lucide-react";
 import { useGlobal } from "@/lib/context/GlobalContext";
-import { ErrorMessage } from "@/components/ui/error-message";
 
 const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
   const { loading: authLoading, initialized } = useGlobal();
@@ -35,7 +34,6 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
   const {
     selectedFile,
     preview,
-    uploadError,
     isDragActive,
     getRootProps,
     getInputProps,
@@ -43,30 +41,20 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
   } = useImageUpload();
 
   // ✅ CORREGIDO: Remove 'user' prop since useVideoGeneration now uses useCredits internally
-  const {
-    isGenerating,
-    error: generationError,
-    generateVideo: handleGenerateClick,
-    // progress,
-    // clearError,
-  } = useVideoGeneration({
-    selectedFile,
-    prompt,
-    preview,
-    resetImage,
-    setPrompt,
-    onSuccess: () => {
-      refreshVideos();
-    },
-    onError: (error) => {
-      console.error("Generation error:", error);
-    },
-  });
-
-  const currentError = useMemo(
-    () => generationError || uploadError,
-    [generationError, uploadError]
-  );
+  const { isGenerating, generateVideo: handleGenerateClick } =
+    useVideoGeneration({
+      selectedFile,
+      prompt,
+      preview,
+      resetImage,
+      setPrompt,
+      onSuccess: () => {
+        refreshVideos();
+      },
+      onError: (error) => {
+        console.error("Generation error:", error);
+      },
+    });
 
   // Efecto simplificado para detectar problemas de carga
   useEffect(() => {
@@ -108,7 +96,7 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
 
   const handleFullReload = () => {
     console.log("🔁 Full page reload");
-    window.location.reload();
+    globalThis.location.reload();
   };
 
   // Loading state simple
@@ -166,7 +154,6 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
         <div className="lg:col-span-1">
           <VideoGeneratorForm
             isGenerating={isGenerating}
-            error={currentError}
             selectedFile={selectedFile}
             preview={preview}
             prompt={prompt}
@@ -181,9 +168,6 @@ const VideoGeneratorUI = React.memo(function VideoGeneratorUI() {
 
         {/* Área de videos */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Mensaje de error - Solo visible en desktop */}
-          <ErrorMessage error={currentError} className="hidden lg:block mb-4" />
-
           {/* Header con controles */}
           <div className="hidden lg:flex justify-between items-center pb-2 border-b border-zinc-800">
             <div className="text-sm font-semibold">

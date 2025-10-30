@@ -3,6 +3,7 @@ import { useState, useCallback, useRef } from "react";
 import { useCredits } from "@/hooks/useCredits";
 import { processImageForVidu } from "@/lib/image-processor";
 import { logger } from "@/lib/utils/logger";
+import { toast } from "sonner";
 
 // Constantes
 const GENERATION_TIMEOUT = 180000; // 3 minutos
@@ -107,8 +108,9 @@ export function useVideoGeneration({
   onError,
 }: UseVideoGenerationProps) {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
+
+  // Sistema de notificaciones (usando instancia global directamente)
 
   // Usar nuestra fuente única de verdad
   const { canAfford, balance, isLoading: creditsLoading } = useCredits(); // ✅ consumeCreditsForVideo removido
@@ -233,7 +235,8 @@ export function useVideoGeneration({
     useCallback(async (): Promise<GenerationResult | null> => {
       // Validaciones iniciales
       if (!canSubmit()) {
-        setError("Por favor espera antes de enviar otro video.");
+        console.log("🔔 Llamando notificación de debounce");
+        toast.warning("Por favor espera antes de enviar otro video.");
         return null;
       }
 
@@ -243,13 +246,13 @@ export function useVideoGeneration({
         canAfford(1)
       );
       if (validationError) {
-        setError(validationError);
+        console.log("🔔 Llamando notificación de validación:", validationError);
+        toast.warning(validationError);
         return null;
       }
 
       // Configurar estado
       setIsGenerating(true);
-      setError(null);
       setProgress(0);
 
       const progressInterval = startProgressSimulation();
@@ -308,7 +311,11 @@ export function useVideoGeneration({
         setPrompt("");
         localStorage.setItem("lastSubmission", Date.now().toString());
 
-        // 6. Callback de éxito
+        // 6. Notificación de éxito y callback
+        if (result.videoId) {
+          console.log("🔔 Llamando notificación de éxito:", result.videoId);
+          toast.success(`Video generado exitosamente: ${result.videoId}`);
+        }
         onSuccess?.(result);
 
         return result;
@@ -339,7 +346,21 @@ export function useVideoGeneration({
 
         // Asegurar que el error se propague y se muestre
         setIsGenerating(false);
-        setError(errorMessage);
+
+        // Mostrar notificación específica según el tipo de error
+        if (
+          err instanceof Error &&
+          err.message.includes("NSFW content detected")
+        ) {
+          console.log("🔔 Llamando notificación NSFW");
+          toast.error(
+            "Contenido NSFW detectado. Se ha reembolsado automáticamente."
+          );
+        } else {
+          console.log("🔔 Llamando notificación de error:", errorMessage);
+          toast.error(`Error en la generación del video: ${errorMessage}`);
+        }
+
         onError?.(errorMessage);
 
         return {
@@ -374,13 +395,9 @@ export function useVideoGeneration({
     cleanup();
     setIsGenerating(false);
     setProgress(0);
-    setError("Generación cancelada por el usuario");
+    console.log("🔔 Llamando notificación de cancelación");
+    toast.info("Generación cancelada por el usuario");
   }, [cleanup]);
-
-  // Reset error
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
 
   // Verificar si puede generar
   const canGenerate = useCallback((): boolean => {
@@ -396,14 +413,12 @@ export function useVideoGeneration({
   return {
     // Estado
     isGenerating,
-    error,
     progress,
     canGenerate: canGenerate(),
 
     // Acciones
     generateVideo,
     cancelGeneration,
-    clearError,
 
     // Información
     balance,
