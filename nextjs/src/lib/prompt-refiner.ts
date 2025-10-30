@@ -1,5 +1,13 @@
 // src/lib/prompt-refiner.ts
-import OpenAI from 'openai';
+import OpenAI from "openai";
+
+// 🚨 VALIDACIÓN DE VARIABLE DE ENTORNO CRÍTICA
+if (!process.env.OPENAI_API_KEY) {
+  console.error("🚨 [PromptRefiner] CRÍTICO: OPENAI_API_KEY no configurada");
+  console.error(
+    "🚨 [PromptRefiner] El sistema usará fallback básico para prompts"
+  );
+}
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -74,22 +82,86 @@ If the prompt and image conflict (e.g., prompt says "one person," image says "tw
 
   try {
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: "gpt-4o",
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: combinedInput },
+        { role: "system", content: systemPrompt },
+        { role: "user", content: combinedInput },
       ],
       temperature: 0.7, // Balance entre creatividad y precisión
       max_tokens: 200, // Espacio para expresividad
     });
 
-    const refinedPrompt = completion.choices[0].message.content?.trim() || userPrompt;
-    console.log('Prompt Original (ES):', userPrompt);
-    console.log('Image Description (ES):', imageDescription);
-    console.log('Prompt Refinado (EN, GPT-4o):', refinedPrompt);
+    const refinedPrompt =
+      completion.choices[0].message.content?.trim() || userPrompt;
+    console.log("Prompt Original (ES):", userPrompt);
+    console.log("Image Description (ES):", imageDescription);
+    console.log("Prompt Refinado (EN, GPT-4o):", refinedPrompt);
     return refinedPrompt;
   } catch (error) {
-    console.error('Error al refinar/traducir el prompt con GPT-4o:', error);
-    return `The scene described as "${userPrompt}" with ${imageDescription}`;
+    console.error(
+      "❌ [PromptRefiner] Error al refinar/traducir el prompt con GPT-4o:",
+      error
+    );
+    console.error(
+      "❌ [PromptRefiner] OPENAI_API_KEY disponible:",
+      !!process.env.OPENAI_API_KEY
+    );
+
+    // 🚨 FALLBACK MEJORADO: Al menos intentar un prompt básico en inglés
+    console.log("🔄 [PromptRefiner] Usando fallback básico en inglés");
+
+    // Extraer acción básica del prompt en español (traducción simple)
+    let englishPrompt = userPrompt;
+
+    // Traducciones básicas más comunes
+    const basicTranslations: Record<string, string> = {
+      platicando: "talking",
+      hablando: "talking",
+      conversando: "conversing",
+      sonriendo: "smiling",
+      riendo: "laughing",
+      caminando: "walking",
+      corriendo: "running",
+      bailando: "dancing",
+      cantando: "singing",
+      abrazando: "hugging",
+      besando: "kissing",
+      jugando: "playing",
+      comiendo: "eating",
+      bebiendo: "drinking",
+      durmiendo: "sleeping",
+      leyendo: "reading",
+      escribiendo: "writing",
+      trabajando: "working",
+      estudiando: "studying",
+      felices: "happy",
+      tristes: "sad",
+      enojados: "angry",
+      sorprendidos: "surprised",
+      asustados: "scared",
+      cansados: "tired",
+      emocionados: "excited",
+      animado: "animated",
+      realista: "realistic",
+    };
+
+    // Aplicar traducciones básicas
+    for (const [spanish, english] of Object.entries(basicTranslations)) {
+      englishPrompt = englishPrompt.replaceAll(spanish, english);
+    }
+
+    // Si la imagen tiene descripción, incluirla
+    const basePrompt =
+      imageDescription.includes("ninguna imagen") ||
+      imageDescription.includes("ningún sujeto")
+        ? englishPrompt
+        : `${englishPrompt} in a scene with ${imageDescription
+            .replace("estilo fotorrealista", "")
+            .trim()}`;
+
+    const fallbackPrompt = `${basePrompt}, smooth natural motion`;
+
+    console.log("🔄 [PromptRefiner] Fallback prompt generado:", fallbackPrompt);
+    return fallbackPrompt;
   }
 }

@@ -1,6 +1,31 @@
 // /lib/vidu/clients/viduClient.ts
 import { createClient } from "@supabase/supabase-js";
 
+// 🚨 VALIDACIÓN DE VARIABLES DE ENTORNO CRÍTICAS
+if (!process.env.VIDU_API_URL || !process.env.VIDU_API_KEY) {
+  console.error("🚨 [ViduClient] CRÍTICO: Variables de entorno faltantes:");
+  console.error("🚨 [ViduClient] VIDU_API_URL:", !!process.env.VIDU_API_URL);
+  console.error("🚨 [ViduClient] VIDU_API_KEY:", !!process.env.VIDU_API_KEY);
+  throw new Error(
+    "Vidu API configuration missing. Check VIDU_API_URL and VIDU_API_KEY environment variables."
+  );
+}
+
+if (
+  !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  !process.env.PRIVATE_SUPABASE_SERVICE_KEY
+) {
+  console.error("🚨 [ViduClient] CRÍTICO: Variables de Supabase faltantes:");
+  console.error(
+    "🚨 [ViduClient] NEXT_PUBLIC_SUPABASE_URL:",
+    !!process.env.NEXT_PUBLIC_SUPABASE_URL
+  );
+  console.error(
+    "🚨 [ViduClient] PRIVATE_SUPABASE_SERVICE_KEY:",
+    !!process.env.PRIVATE_SUPABASE_SERVICE_KEY
+  );
+}
+
 // Cliente de Supabase para logging (usa service_role)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

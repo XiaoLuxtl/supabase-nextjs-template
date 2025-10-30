@@ -101,10 +101,60 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 4. 🚀 PROCESAMIENTO ASÍNCRONO (no bloqueante)
-    AsyncVideoProcessor.processVideoGeneration(video.id, prompt, image_base64)
+    // 4. 🚀 PROCESAMIENTO SÍNCRONO INICIAL (validar que Vidu acepta)
+    console.log("🚀 [Generate] Starting initial synchronous processing...");
+    let taskId: string;
+
+    try {
+      const initialResult =
+        await AsyncVideoProcessor.processVideoGenerationSync(
+          video.id,
+          prompt,
+          image_base64
+        );
+
+      if (!initialResult.success || !initialResult.taskId) {
+        console.error(
+          "❌ [Generate] Initial processing failed:",
+          initialResult.error
+        );
+
+        // ❌ REEMBOLSO AUTOMÁTICO por fallo inicial
+        await CreditsService.refundForViduFailure(video.id);
+
+        return NextResponse.json(
+          {
+            error: initialResult.error || "Failed to start video generation",
+          },
+          { status: 500 }
+        );
+      }
+
+      taskId = initialResult.taskId;
+      console.log("✅ [Generate] Initial processing successful:", {
+        videoId: video.id,
+        taskId,
+      });
+    } catch (error) {
+      console.error("💥 [Generate] Initial processing error:", error);
+
+      // ❌ REEMBOLSO AUTOMÁTICO por error crítico
+      await CreditsService.refundForViduFailure(video.id);
+
+      return NextResponse.json(
+        { error: "Internal processing error" },
+        { status: 500 }
+      );
+    }
+
+    // 4.5. 🚀 PROCESAMIENTO ASÍNCRONO (monitorear progreso)
+    AsyncVideoProcessor.processVideoGeneration(
+      video.id,
+      taskId,
+      prompt,
+      image_base64
+    )
       .then((result) => {
-        // ✅ Ahora result tiene las propiedades success y error
         if (result.success) {
           console.log(
             "✅ [Generate] Async processing completed for:",
@@ -118,7 +168,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         console.error("💥 [Generate] Async processing error:", error);
       });
 
-    // 5. 📨 RESPUESTA INMEDIATA AL USUARIO
+    // 5. 📨 RESPUESTA AL USUARIO (solo si todo está bien)
     const response: GenerateResponse = {
       success: true,
       videoId: video.id,
@@ -127,7 +177,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       message: "Video generation started successfully",
     };
 
-    console.log("✅ [Generate] Request completed:", {
+    console.log("✅ [Generate] Request completed successfully:", {
       videoId: video.id,
       creditsBalance: balanceAfter,
     });

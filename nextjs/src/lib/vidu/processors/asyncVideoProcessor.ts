@@ -20,16 +20,16 @@ interface AsyncProcessingResult {
 
 export class AsyncVideoProcessor {
   /**
-   * 🎯 PROCESAMIENTO ASÍNCRONO PRINCIPAL
-   * Maneja toda la generación de video después de la transacción atómica
+   * 🚀 PROCESAR GENERACIÓN DE VIDEO SÍNCRONA (VALIDACIÓN INICIAL)
+   * Solo valida y llama a Vidu API, sin esperar procesamiento completo
    */
-  static async processVideoGeneration(
+  static async processVideoGenerationSync(
     videoId: string,
     prompt: string,
     imageBase64?: string
-  ): Promise<AsyncProcessingResult> {
+  ): Promise<{ success: boolean; taskId?: string; error?: string }> {
     try {
-      console.log("🔄 [AsyncProcessor] Starting async video processing:", {
+      console.log("🔄 [AsyncProcessor] Starting sync video processing:", {
         videoId,
         promptLength: prompt.length,
         hasImage: !!imageBase64,
@@ -41,8 +41,6 @@ export class AsyncVideoProcessor {
         return {
           success: false,
           error: "Video record not found",
-          videoId,
-          status: "failed",
         };
       }
 
@@ -52,9 +50,8 @@ export class AsyncVideoProcessor {
           video.status
         );
         return {
-          success: true,
-          videoId,
-          status: video.status,
+          success: false,
+          error: "Video already processed",
         };
       }
 
@@ -62,17 +59,126 @@ export class AsyncVideoProcessor {
       console.log(
         "🎨 [AsyncProcessor] Processing image and refining prompt..."
       );
-      const { refinedPrompt } = await this.processImageAndPrompt(
-        prompt,
-        imageBase64
-      );
+      console.log("📝 [AsyncProcessor] Original prompt:", prompt);
+      console.log("🖼️ [AsyncProcessor] Has image:", !!imageBase64);
+
+      const { refinedPrompt, imageDescription } =
+        await this.processImageAndPrompt(prompt, imageBase64);
+
+      console.log("✅ [AsyncProcessor] Refined prompt:", refinedPrompt);
+      console.log("📋 [AsyncProcessor] Image description:", imageDescription);
 
       // 3. Llamar a Vidu API
       console.log("🚀 [AsyncProcessor] Calling Vidu API...");
+      console.log("🔗 [AsyncProcessor] Vidu API request details:", {
+        promptLength: refinedPrompt.length,
+        hasImage: !!imageBase64,
+        imageSize: imageBase64
+          ? `${(imageBase64.length * 3) / 4 / 1024}KB`
+          : "N/A",
+      });
+
       const viduResult = await ViduClient.generateVideoAsync(
         refinedPrompt,
         imageBase64
       );
+
+      console.log("📡 [AsyncProcessor] Vidu API response:", {
+        success: viduResult.success,
+        hasTaskId: !!viduResult.taskId,
+        error: viduResult.error,
+      });
+
+      if (!viduResult.success || !viduResult.taskId) {
+        console.error("❌ [AsyncProcessor] Vidu API failed:", viduResult.error);
+        return {
+          success: false,
+          error: viduResult.error || "Vidu API failed",
+        };
+      }
+
+      // 4. Actualizar registro con datos de Vidu (solo taskId por ahora)
+      console.log("✅ [AsyncProcessor] Sync processing successful:", {
+        videoId,
+        taskId: viduResult.taskId,
+      });
+
+      return {
+        success: true,
+        taskId: viduResult.taskId,
+      };
+    } catch (error) {
+      console.error("❌ [AsyncProcessor] Sync processing failed:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  }
+
+  /**
+   * 🎯 PROCESAMIENTO ASÍNCRONO PRINCIPAL
+   * Monitorea el progreso de Vidu y actualiza la BD cuando esté completo
+   * Asume que la validación inicial ya se hizo en processVideoGenerationSync
+   */
+  static async processVideoGeneration(
+    videoId: string,
+    taskId: string,
+    prompt: string,
+    imageBase64?: string
+  ): Promise<AsyncProcessingResult> {
+    try {
+      console.log("🔄 [AsyncProcessor] Starting async monitoring:", {
+        videoId,
+        taskId,
+        promptLength: prompt.length,
+        hasImage: !!imageBase64,
+      });
+
+      // 1. Verificar que el video existe
+      const video = await this.getVideoRecord(videoId);
+      if (!video) {
+        return {
+          success: false,
+          error: "Video record not found",
+          videoId,
+          status: "failed",
+        };
+      }
+
+      // 2. Procesar imagen y refinar prompt si es necesario
+      console.log(
+        "🎨 [AsyncProcessor] Processing image and refining prompt..."
+      );
+      console.log("📝 [AsyncProcessor] Original prompt:", prompt);
+      console.log("🖼️ [AsyncProcessor] Has image:", !!imageBase64);
+
+      const { refinedPrompt, imageDescription } =
+        await this.processImageAndPrompt(prompt, imageBase64);
+
+      console.log("✅ [AsyncProcessor] Refined prompt:", refinedPrompt);
+      console.log("📋 [AsyncProcessor] Image description:", imageDescription);
+
+      // 3. Llamar a Vidu API
+      console.log("🚀 [AsyncProcessor] Calling Vidu API...");
+      console.log("🔗 [AsyncProcessor] Vidu API request details:", {
+        promptLength: refinedPrompt.length,
+        hasImage: !!imageBase64,
+        imageSize: imageBase64
+          ? `${(imageBase64.length * 3) / 4 / 1024}KB`
+          : "N/A",
+      });
+
+      const viduResult = await ViduClient.generateVideoAsync(
+        refinedPrompt,
+        imageBase64
+      );
+
+      console.log("📡 [AsyncProcessor] Vidu API response:", {
+        success: viduResult.success,
+        hasTaskId: !!viduResult.taskId,
+        error: viduResult.error,
+      });
 
       if (!viduResult.success || !viduResult.taskId) {
         console.error("❌ [AsyncProcessor] Vidu API failed:", viduResult.error);
@@ -435,8 +541,25 @@ export class AsyncVideoProcessor {
         })
         .eq("id", videoId);
 
-      // Reprocesar
-      return await this.processVideoGeneration(videoId, video.prompt);
+      // Reprocesar con nueva llamada inicial (sin imagen ya que debería estar procesada)
+      const retryResult = await this.processVideoGenerationSync(
+        videoId,
+        video.prompt
+      );
+      if (!retryResult.success || !retryResult.taskId) {
+        return {
+          success: false,
+          error: retryResult.error || "Retry failed",
+          videoId,
+          status: "failed",
+        };
+      }
+      // Continuar monitoreando con el nuevo taskId
+      return await this.processVideoGeneration(
+        videoId,
+        retryResult.taskId,
+        video.prompt
+      );
     } catch (error) {
       console.error("❌ [AsyncProcessor] Retry failed:", error);
       return {
