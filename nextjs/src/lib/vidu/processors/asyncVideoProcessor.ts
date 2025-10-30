@@ -86,14 +86,26 @@ export class AsyncVideoProcessor {
       console.log("📡 [AsyncProcessor] Vidu API response:", {
         success: viduResult.success,
         hasTaskId: !!viduResult.taskId,
+        taskId: viduResult.taskId,
         error: viduResult.error,
       });
 
-      if (!viduResult.success || !viduResult.taskId) {
+      if (!viduResult.success) {
         console.error("❌ [AsyncProcessor] Vidu API failed:", viduResult.error);
         return {
           success: false,
           error: viduResult.error || "Vidu API failed",
+        };
+      }
+
+      if (!viduResult.taskId) {
+        console.error(
+          "❌ [AsyncProcessor] Vidu API returned success but no taskId:",
+          viduResult
+        );
+        return {
+          success: false,
+          error: "Vidu API returned success but no task_id",
         };
       }
 

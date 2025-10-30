@@ -20,7 +20,31 @@ interface GenerateResponse {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    // 🔒 1. Autenticar usuario
+    // � DIAGNÓSTICO DE ENTORNO (siempre para debugging)
+    console.log("🔍 [Generate] Environment check:");
+    console.log("🔍 [Generate] NODE_ENV:", process.env.NODE_ENV);
+    console.log(
+      "🔍 [Generate] OPENAI_API_KEY:",
+      process.env.OPENAI_API_KEY ? "✅ Presente" : "❌ Faltante"
+    );
+    console.log(
+      "🔍 [Generate] VIDU_API_KEY:",
+      process.env.VIDU_API_KEY ? "✅ Presente" : "❌ Faltante"
+    );
+    console.log(
+      "🔍 [Generate] VIDU_API_URL:",
+      process.env.VIDU_API_URL ? "✅ Presente" : "❌ Faltante"
+    );
+    console.log(
+      "🔍 [Generate] NEXT_PUBLIC_SUPABASE_URL:",
+      process.env.NEXT_PUBLIC_SUPABASE_URL ? "✅ Presente" : "❌ Faltante"
+    );
+    console.log(
+      "🔍 [Generate] PRIVATE_SUPABASE_SERVICE_KEY:",
+      process.env.PRIVATE_SUPABASE_SERVICE_KEY ? "✅ Presente" : "❌ Faltante"
+    );
+
+    // �🔒 1. Autenticar usuario
     const authResult = await authenticateUser(request);
     if (!authResult.success || !authResult.user) {
       return NextResponse.json(
@@ -135,6 +159,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         videoId: video.id,
         taskId,
       });
+
+      // 🚨 VERIFICACIÓN FINAL: Asegurar que tenemos un taskId válido
+      if (!taskId) {
+        console.error(
+          "🚨 [Generate] CRÍTICO: taskId es undefined después del procesamiento inicial"
+        );
+
+        // ❌ REEMBOLSO AUTOMÁTICO por taskId faltante
+        await CreditsService.refundForViduFailure(video.id);
+
+        return NextResponse.json(
+          { error: "Failed to obtain task ID from Vidu API" },
+          { status: 500 }
+        );
+      }
     } catch (error) {
       console.error("💥 [Generate] Initial processing error:", error);
 
