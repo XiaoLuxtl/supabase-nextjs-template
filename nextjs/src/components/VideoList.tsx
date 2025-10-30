@@ -90,9 +90,9 @@ const VideoList = function VideoList({
               } min-w-[200px] max-w-[200px]`}
             >
               {/* TODO Temp url */}
-              {video.cover_url || "null" ? (
+              {video.cover_url || "/cargando.png" ? (
                 <img
-                  src={video.cover_url || "null"}
+                  src={video.cover_url || "/cargando.png"}
                   alt="Video cover"
                   className="w-full h-24 object-cover rounded-md mb-2 pointer-events-none"
                   draggable={false}
