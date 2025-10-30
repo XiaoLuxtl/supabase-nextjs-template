@@ -9,11 +9,9 @@ class Logger {
     process.env.NEXT_PUBLIC_NODE_ENV !== "production" &&
     process.env.NODE_ENV !== "production";
   private readonly isTest = process.env.NODE_ENV === "test";
+
   private get forceVerboseLogging(): boolean {
-    return (
-      process.env.NEXT_PUBLIC_FORCE_VERBOSE_LOGGING === "true" ||
-      process.env.FORCE_VERBOSE_LOGGING === "true"
-    );
+    return isVerboseLoggingEnabled();
   }
 
   /**
@@ -213,34 +211,52 @@ const isProduction =
   process.env.NEXT_PUBLIC_NODE_ENV === "production" ||
   process.env.NODE_ENV === "production";
 
+// Función helper para verificar si verbose logging está activo
+const isVerboseLoggingEnabled = (): boolean => {
+  return (
+    process.env.NEXT_PUBLIC_FORCE_VERBOSE_LOGGING === "true" ||
+    process.env.FORCE_VERBOSE_LOGGING === "true"
+  );
+};
+
 // Log temporal para debugging (se verá antes de la sobreescritura)
-if (typeof globalThis.window !== "undefined") {
+if (globalThis.window !== undefined) {
   console.log(
     "🔧 Logger inicializado en cliente. NODE_ENV:",
     process.env.NEXT_PUBLIC_NODE_ENV,
     "isProduction:",
-    isProduction
+    isProduction,
+    "verboseEnabled:",
+    isVerboseLoggingEnabled()
   );
 }
 
-if (isProduction) {
+if (isProduction && !isVerboseLoggingEnabled()) {
   // Log temporal antes de sobreescribir (este SÍ se verá)
-  if (typeof globalThis.window !== "undefined") {
-    console.log("🚫 SOBRESCRIBIENDO CONSOLE METHODS EN PRODUCCIÓN");
+  if (globalThis.window !== undefined) {
+    console.log(
+      "🚫 SOBRESCRIBIENDO CONSOLE METHODS EN PRODUCCIÓN (verbose logging desactivado)"
+    );
   }
 
   // Deshabilita completamente todos los métodos de console en producción
   console.log = () => {};
   console.info = () => {};
   console.warn = () => {};
-  // console.error = () => {};
   console.debug = () => {};
   console.trace = () => {};
   console.table = () => {};
 
   // Verificación final (este NO se verá si la sobreescritura funcionó)
-  if (typeof globalThis.window !== "undefined") {
+  if (globalThis.window !== undefined) {
     console.log("✅ SOBRESCRITURA COMPLETADA - ESTE MENSAJE NO DEBERÍA VERSE");
+  }
+} else if (isProduction && isVerboseLoggingEnabled()) {
+  // Log cuando verbose está activo en producción
+  if (globalThis.window !== undefined) {
+    console.log(
+      "🔧 VERBOSE LOGGING ACTIVADO EN PRODUCCIÓN - Console methods preservados"
+    );
   }
 }
 
