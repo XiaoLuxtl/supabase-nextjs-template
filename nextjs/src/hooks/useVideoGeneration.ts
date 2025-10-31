@@ -311,10 +311,15 @@ export function useVideoGeneration({
         setPrompt("");
         localStorage.setItem("lastSubmission", Date.now().toString());
 
-        // 6. Notificación de éxito y callback
+        // 6. Notificación de proceso iniciado y callback
         if (result.videoId) {
-          console.log("🔔 Llamando notificación de éxito:", result.videoId);
-          toast.success(`Video generado exitosamente: ${result.videoId}`);
+          console.log("🔔 Llamando notificación de inicio:", result.videoId);
+          toast.success(
+            `Video iniciado. Se procesará en segundo plano: ${result.videoId}`
+          );
+          toast.info("El video aparecerá en tu lista cuando esté listo", {
+            duration: 5000,
+          });
         }
         onSuccess?.(result);
 

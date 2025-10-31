@@ -45,15 +45,23 @@ export class AsyncVideoProcessor {
       }
 
       if (video.status !== "pending") {
-        console.warn(
-          "⚠️ [AsyncProcessor] Video already processed:",
-          video.status
-        );
+        console.warn("⚠️ [AsyncProcessor] Video already processed:", {
+          videoId,
+          currentStatus: video.status,
+          requestedOperation: "processVideoGenerationSync",
+        });
         return {
           success: false,
           error: "Video already processed",
         };
       }
+
+      // Avanzamos directamente con el procesamiento
+      console.log("🔄 [AsyncProcessor] Proceeding with video generation:", {
+        videoId,
+        currentStatus: video.status,
+        timestamp: new Date().toISOString(),
+      });
 
       // 2. Procesar imagen y refinar prompt si es necesario
       console.log(
@@ -109,10 +117,31 @@ export class AsyncVideoProcessor {
         };
       }
 
-      // 4. Actualizar registro con datos de Vidu (solo taskId por ahora)
-      console.log("✅ [AsyncProcessor] Sync processing successful:", {
+      // 4. Actualizar registro con datos de Vidu y marcar como processing
+      const { error: updateError } = await supabase
+        .from("video_generations")
+        .update({
+          status: "processing",
+          vidu_task_id: viduResult.taskId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", videoId);
+
+      if (updateError) {
+        console.error("❌ [AsyncProcessor] Failed to update video status:", {
+          videoId,
+          error: updateError.message,
+        });
+        return {
+          success: false,
+          error: "Failed to update video status",
+        };
+      }
+
+      console.log("✅ [AsyncProcessor] Video processing started:", {
         videoId,
         taskId: viduResult.taskId,
+        status: "processing",
       });
 
       return {

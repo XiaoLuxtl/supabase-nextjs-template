@@ -77,7 +77,43 @@ export async function POST(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
 
-    // 🔍 BUSCAR LA GENERACIÓN POR TASK_ID (ESENCIAL - AL INICIO)
+    // Verificar si ya procesamos este webhook antes
+    const { data: existingLog } = await supabase
+      .from("vidu_webhook_logs")
+      .select("processed, received_at")
+      .eq("vidu_task_id", body.id)
+      .eq("payload->state", body.state)
+      .single();
+
+    if (existingLog?.processed) {
+      console.log("⚠️ [Webhook] Duplicate detected:", {
+        taskId: body.id,
+        state: body.state,
+        previousReceived: existingLog.received_at,
+      });
+      return NextResponse.json({
+        received: true,
+        duplicate: true,
+        previous_received_at: existingLog.received_at,
+      });
+    }
+
+    // 1️⃣ PRIMERO: Guardar el webhook SIEMPRE
+    const { error: logError } = await supabase
+      .from("vidu_webhook_logs")
+      .insert({
+        vidu_task_id: body.id,
+        payload: body,
+        processed: false,
+        received_at: new Date().toISOString(),
+      });
+
+    if (logError) {
+      console.error("❌ [Webhook] Error saving webhook log:", logError);
+      // NO retornamos error aquí, seguimos intentando procesar
+    }
+
+    // 2️⃣ DESPUÉS: Buscar la generación
     const { data: generation, error: findError } = await supabase
       .from("video_generations")
       .select("*")
@@ -91,17 +127,6 @@ export async function POST(request: NextRequest) {
       currentStatus: generation?.status,
       error: findError?.message,
     });
-
-    // Guardar webhook log (incluyendo user_id si existe)
-    const { error: logError } = await supabase
-      .from("vidu_webhook_logs")
-      .insert({
-        vidu_task_id: body.id,
-        user_id: generation?.user_id || null, // ✅ GUARDAR USER_ID SI EXISTE
-        payload: body,
-        processed: false,
-        received_at: new Date().toISOString(),
-      });
 
     if (logError) {
       console.error("❌ [Webhook] Error logging webhook:", logError);
@@ -245,22 +270,43 @@ export async function POST(request: NextRequest) {
 
       if (!creation) {
         console.error("❌ [Webhook] Invalid webhook data: missing creations");
+
+        // Registrar el error en el log
+        await supabase
+          .from("vidu_webhook_logs")
+          .update({
+            processed: true,
+            error_type: "INVALID_SUCCESS_DATA",
+            error_message: "Success webhook missing creations data",
+          })
+          .eq("vidu_task_id", body.id);
+
         return NextResponse.json({ error: "Invalid data" }, { status: 400 });
       }
 
+      const completionData = {
+        status: "completed",
+        vidu_creation_id: creation.id,
+        video_url: creation.url,
+        cover_url: creation.cover_url,
+        video_duration_actual: creation.video?.duration || 0,
+        video_fps: creation.video?.fps || 0,
+        bgm: body.bgm || false,
+        completed_at: new Date().toISOString(),
+        vidu_full_response: body,
+      };
+
+      console.log("✅ [Webhook] Updating video with completion data:", {
+        videoId: generation.id,
+        creationId: creation.id,
+        hasVideoUrl: !!creation.url,
+        hasCoverUrl: !!creation.cover_url,
+        duration: creation.video?.duration || 0,
+      });
+
       const { error: updateError } = await supabase
         .from("video_generations")
-        .update({
-          status: "completed",
-          vidu_creation_id: creation.id,
-          video_url: creation.url,
-          cover_url: creation.cover_url,
-          video_duration_actual: creation.video?.duration || 0,
-          video_fps: creation.video?.fps || 0,
-          bgm: body.bgm || false,
-          completed_at: new Date().toISOString(),
-          vidu_full_response: body,
-        })
+        .update(completionData)
         .eq("id", generation.id);
 
       if (updateError) {
@@ -311,16 +357,83 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Handle other states (e.g., "queueing", "processing")
-    console.log("⚠️ [Webhook] State not handled:", body.state);
+    // Handle "processing" state
+    if (body.state === "processing") {
+      console.log("🔄 [Webhook] Processing 'processing' state:", {
+        taskId: body.id,
+        currentStatus: generation.status,
+        generationId: generation.id,
+        timestamp: new Date().toISOString(),
+      });
 
-    // Marcar como procesado incluso para estados no manejados
+      // Solo actualizar si no está ya en processing
+      if (generation.status === "processing") {
+        console.log("ℹ️ [Webhook] Generation already in processing state:", {
+          generationId: generation.id,
+          taskId: body.id,
+        });
+
+        await supabase
+          .from("vidu_webhook_logs")
+          .update({ processed: true })
+          .eq("vidu_task_id", body.id);
+
+        return NextResponse.json({
+          received: true,
+          processed: true,
+          already_processing: true,
+          generation_id: generation.id,
+          user_id: generation.user_id,
+        });
+      }
+
+      const { error: updateError } = await supabase
+        .from("video_generations")
+        .update({
+          status: "processing",
+          vidu_full_response: body,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", generation.id);
+
+      if (updateError) {
+        console.error("❌ [Webhook] Error updating to processing:", {
+          error: updateError.message,
+          generationId: generation.id,
+          taskId: body.id,
+        });
+        return NextResponse.json({ error: "Update failed" }, { status: 500 });
+      }
+
+      await supabase
+        .from("vidu_webhook_logs")
+        .update({ processed: true })
+        .eq("vidu_task_id", body.id);
+
+      console.log("✅ [Webhook] Updated to processing state:", {
+        generationId: generation.id,
+        previousStatus: generation.status,
+        timestamp: new Date().toISOString(),
+      });
+
+      return NextResponse.json({
+        received: true,
+        processed: true,
+        generation_id: generation.id,
+        user_id: generation.user_id,
+        previous_status: generation.status,
+      });
+    }
+
+    // Handle other unknown states
+    console.log("⚠️ [Webhook] Unknown state received:", body.state);
+
     await supabase
       .from("vidu_webhook_logs")
       .update({
         processed: true,
-        error_message: `Unhandled state: ${body.state}`,
-        error_type: "UNHANDLED_STATE",
+        error_message: `Unknown state: ${body.state}`,
+        error_type: "UNKNOWN_STATE",
       })
       .eq("vidu_task_id", body.id);
 
