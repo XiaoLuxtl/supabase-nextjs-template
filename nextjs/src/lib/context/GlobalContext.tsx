@@ -34,10 +34,6 @@ const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
 type ProfileBalance = { credits_balance: number };
 type SessionHealth = "healthy" | "expiring" | "expired" | "unknown";
 
-// Utilidades para manejo de sesiones
-const SESSION_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutos
-const TOKEN_REFRESH_THRESHOLD = 10 * 60 * 1000; // 10 minutos antes de expirar
-
 type DatabaseChangePayload = {
   new: { id?: string; [key: string]: unknown } | null;
   old: { id?: string; [key: string]: unknown } | null;
@@ -56,42 +52,9 @@ export function GlobalProvider({
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionHealth, setSessionHealth] = useState<SessionHealth>("unknown");
   const [initialized, setInitialized] = useState(false);
-  const [hasFocus, setHasFocus] = useState<boolean>(true); // Asumir que inicia con foco
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const userIdRef = useRef<string | null>(null);
-  const sessionCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastSessionCheckRef = useRef<number>(0);
   const isInitializingRef = useRef<boolean>(false);
-
-  // Función para verificar la salud de la sesión
-  const checkSessionHealth = useCallback(async (): Promise<SessionHealth> => {
-    try {
-      const supabase = createSPAClient();
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
-
-      if (error || !session) {
-        return "expired";
-      }
-
-      const now = Date.now();
-      const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
-      const timeUntilExpiry = expiresAt - now;
-
-      if (timeUntilExpiry < 0) {
-        return "expired";
-      } else if (timeUntilExpiry < TOKEN_REFRESH_THRESHOLD) {
-        return "expiring";
-      } else {
-        return "healthy";
-      }
-    } catch (error) {
-      console.error("Error checking session health:", error);
-      return "unknown";
-    }
-  }, []);
 
   // Función helper para obtener perfil de usuario
   const fetchUserProfile = useCallback(
@@ -363,87 +326,9 @@ export function GlobalProvider({
     };
   }, []); // Empty dependency array - only run once on mount
 
-  // useEffect para configurar listeners de focus/blur
-  useEffect(() => {
-    const handleFocus = async () => {
-      console.log("🔄 Window gained focus");
-      setHasFocus(true);
-
-      // Verificación rápida de sesión al recuperar foco
-      if (initialized && user && !isInitializingRef.current) {
-        try {
-          const health = await checkSessionHealth();
-          setSessionHealth(health);
-
-          // Si la sesión expiró, intentar refresh rápido
-          if (health === "expired") {
-            console.log("🔄 Session expired, attempting quick refresh");
-            const supabase = createSPAClient();
-            const { error } = await supabase.auth.refreshSession();
-            if (!error) {
-              setSessionHealth("healthy");
-              console.log("✅ Session refreshed successfully on focus");
-            }
-          }
-        } catch (error) {
-          console.error("Error checking session on focus:", error);
-        }
-      }
-    };
-
-    const handleBlur = () => {
-      console.log("🔄 Window lost focus");
-      setHasFocus(false);
-    };
-
-    // Configurar listeners
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("blur", handleBlur);
-
-    // Verificar foco inicial
-    setHasFocus(document.hasFocus());
-
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, [initialized, user, checkSessionHealth]);
-
-  // Segundo useEffect para configurar suscripciones y health checks
+  // useEffect para configurar suscripciones (simplificado)
   useEffect(() => {
     if (!initialized || !user?.id) return; // Solo configurar después de la inicialización y cuando hay usuario
-
-    // Configurar health check periódico - solo cuando tiene foco
-    sessionCheckIntervalRef.current = setInterval(async () => {
-      // Solo verificar si la ventana tiene foco
-      if (!hasFocus) return;
-
-      const now = Date.now();
-      // Usar intervalo más corto cuando tiene foco (30 segundos vs 5 minutos)
-      const checkInterval = hasFocus ? 30 * 1000 : SESSION_CHECK_INTERVAL;
-
-      if (now - lastSessionCheckRef.current > checkInterval) {
-        lastSessionCheckRef.current = now;
-        const health = await checkSessionHealth();
-        setSessionHealth(health);
-
-        // Si la sesión está expirando, refrescar proactivamente
-        if (health === "expiring") {
-          console.log("🔄 Token expiring soon, refreshing proactively");
-          try {
-            const supabase = createSPAClient();
-            const { error } = await supabase.auth.refreshSession();
-            if (!error) {
-              setSessionHealth("healthy");
-              // NO refrescar perfil completo - solo actualizar health
-              console.log("✅ Token refreshed successfully");
-            }
-          } catch (error) {
-            console.error("Proactive token refresh failed:", error);
-          }
-        }
-      }
-    }, 10000); // Verificar cada 10 segundos cuando tiene foco
 
     // Configurar suscripción para cambios en el perfil
     const setupSubscription = () => {
@@ -480,7 +365,7 @@ export function GlobalProvider({
 
     setupSubscription();
 
-    // Configurar listener para cambios de autenticación
+    // Configurar listener para cambios de autenticación (simplificado)
     const setupAuthListener = () => {
       const supabase = createSPAClient();
 
@@ -490,24 +375,10 @@ export function GlobalProvider({
         console.log("🔄 Auth state change:", event, session?.user?.id);
 
         if (event === "SIGNED_IN" && session?.user) {
-          console.log("✅ User signed in, checking if profile refresh needed");
-          // Solo refrescar si no tenemos usuario o el ID cambió
-          if (!isInitializingRef.current && initialized) {
-            if (!user || user.id !== session.user.id) {
-              console.log("🔄 User changed or missing, refreshing profile");
-              await refreshUserProfile();
-            } else {
-              console.log(
-                "🔄 User already loaded, skipping full profile refresh"
-              );
-              // Solo verificar health de sesión
-              const health = await checkSessionHealth();
-              setSessionHealth(health);
-            }
-          } else {
-            console.log(
-              "🔄 Skipping profile refresh - initialization in progress or not initialized yet"
-            );
+          console.log("✅ User signed in");
+          // Refrescar perfil cuando el usuario cambia
+          if (!user || user.id !== session.user.id) {
+            await refreshUserProfile();
           }
         } else if (event === "SIGNED_OUT") {
           console.log("🚪 User signed out, clearing state");
@@ -515,30 +386,9 @@ export function GlobalProvider({
           userIdRef.current = null;
           setIsAuthenticated(false);
           setSessionHealth("unknown");
-          setInitialized(true);
-          setLoading(false);
         } else if (event === "TOKEN_REFRESHED") {
-          console.log("🔑 Token refreshed, updating session health");
-          if (!isInitializingRef.current) {
-            // Solo actualizar health, no refrescar perfil completo
-            const health = await checkSessionHealth();
-            setSessionHealth(health);
-          }
-        } else if (event === "USER_UPDATED") {
-          console.log("👤 User updated, checking if profile refresh needed");
-          if (!isInitializingRef.current) {
-            // Solo refrescar si el usuario cambió significativamente
-            if (
-              session?.user &&
-              (!user ||
-                user.id !== session.user.id ||
-                user.email !== session.user.email)
-            ) {
-              await refreshUserProfile();
-            } else {
-              console.log("👤 User update not significant, skipping refresh");
-            }
-          }
+          console.log("🔑 Token refreshed automatically");
+          setSessionHealth("healthy");
         }
       });
 
@@ -549,15 +399,12 @@ export function GlobalProvider({
 
     // Cleanup
     return () => {
-      if (sessionCheckIntervalRef.current) {
-        clearInterval(sessionCheckIntervalRef.current);
-      }
       if (subscriptionRef.current) {
         subscriptionRef.current.unsubscribe();
       }
       authSubscription.unsubscribe();
     };
-  }, [checkSessionHealth, refreshUserProfile, initialized, user?.id, hasFocus]); // Dependencies are stable due to useCallback
+  }, [refreshUserProfile, initialized, user?.id]);
 
   const contextValue = useMemo(
     () => ({
